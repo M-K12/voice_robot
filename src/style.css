@@ -1,0 +1,50 @@
+/* ═══════════════════════════════════════════════════════ */
+/*  Voice Robot — Global Styles                           */
+/* ═══════════════════════════════════════════════════════ */
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;700&family=Space+Grotesk:wght@400;500;600;700&display=swap');
+
+:root {
+  --bg-primary: #080c14;
+  --bg-secondary: #0f1621;
+  --bg-card: rgba(15, 22, 33, 0.7);
+  --bg-input: rgba(255,255,255,0.05);
+  --border-subtle: rgba(255,255,255,0.07);
+  --border-glow: rgba(99,179,237,0.18);
+
+  --text-primary: #e2e8f0;
+  --text-secondary: #94a3b8;
+  --text-muted: #4a5568;
+
+  --accent-blue:   #63b3ed;
+  --accent-purple: #a78bfa;
+  --accent-teal:   #2dd4bf;
+  --accent-gradient: linear-gradient(135deg, #63b3ed 0%, #a78bfa 50%, #2dd4bf 100%);
+
+  --radius-sm: 8px;
+  --radius-md: 14px;
+  --radius-lg: 20px;
+  --radius-xl: 24px;
+
+  --font-sans: 'Noto Sans SC', system-ui, sans-serif;
+  --font-display: 'Space Grotesk', var(--font-sans);
+
+  --transition-fast: 0.15s cubic-bezier(0.4,0,0.2,1);
+  --transition-smooth: 0.3s cubic-bezier(0.4,0,0.2,1);
+  --shadow-deep: 0 8px 32px rgba(0,0,0,0.45);
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body, #app { height: 100%; }
+body {
+  font-family: var(--font-sans);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* 自定义滚动条 */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 10px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.15); }

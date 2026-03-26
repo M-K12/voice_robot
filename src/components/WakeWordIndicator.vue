@@ -1,0 +1,161 @@
+<template>
+  <div class="wake-wrap">
+    <!-- 唤醒按钮 -->
+    <button
+      class="wake-btn"
+      :class="{ active: isListening, detected: justDetected }"
+      @click="toggleWake"
+      :title="isListening ? '点击停止唤醒监听' : '点击启动唤醒词监听'"
+    >
+      <span class="wake-ring" v-if="isListening || justDetected"></span>
+      <span class="wake-icon">{{ justDetected ? '🎙️' : isListening ? '👂' : '✨' }}</span>
+      <span class="wake-label">{{ justDetected ? '已唤醒' : isListening ? '聆听中' : '唤醒' }}</span>
+    </button>
+  </div>
+</template>
+
+<script setup>
+import { ref, watch, onUnmounted, onMounted } from 'vue'
+
+// ... (props and state) ...
+const props = defineProps({
+  accessKey: { type: String, default: '' },
+  keywordPath: { type: String, default: '' },
+  modelPath: { type: String, default: '' },
+})
+
+const emit = defineEmits(['wake'])
+
+const isListening = ref(false)
+const justDetected = ref(false)
+let unlistenFn = null
+let detectedTimer = null
+
+// Tauri API（懒加载）
+let tauriInvoke = null
+let tauriListen = null
+
+async function loadTauriApis() {
+  if (tauriInvoke) return true
+  try {
+    const { invoke } = await import('@tauri-apps/api/core')
+    const { listen } = await import('@tauri-apps/api/event')
+    tauriInvoke = invoke
+    tauriListen = listen
+    return true
+  } catch {
+    return false
+  }
+}
+
+async function toggleWake() {
+  const hasTauri = await loadTauriApis()
+
+  if (isListening.value) {
+    // 停止监听
+    if (hasTauri) {
+      try { await tauriInvoke('stop_wake_word') } catch (e) { console.error(e) }
+    }
+    if (unlistenFn) { unlistenFn(); unlistenFn = null }
+    isListening.value = false
+    return
+  }
+
+  // 启动监听
+  if (!hasTauri) {
+    console.warn('此功能需要在 Tauri 桌面应用中运行。')
+    return
+  }
+  if (!props.accessKey) {
+    console.warn('请先在设置中填写 Picovoice AccessKey。')
+    return
+  }
+
+  try {
+    // 订阅唤醒事件
+    unlistenFn = await tauriListen('wake-word-detected', () => {
+      justDetected.value = true
+      emit('wake')
+      clearTimeout(detectedTimer)
+      detectedTimer = setTimeout(() => { justDetected.value = false }, 2500)
+    })
+
+    await tauriInvoke('start_wake_word', {
+      accessKey: props.accessKey,
+      keywordPath: props.keywordPath,
+      modelPath: props.modelPath,
+    })
+    isListening.value = true
+  } catch (e) {
+    console.error('[wake_word]', e)
+    // 自动启动失败时不弹窗打扰
+    if (unlistenFn) { unlistenFn(); unlistenFn = null }
+  }
+}
+
+onMounted(() => {
+  // 组件挂载后稍作延迟自动启动唤醒监听
+  setTimeout(() => {
+    if (!isListening.value) {
+      toggleWake()
+    }
+  }, 1000)
+})
+
+onUnmounted(() => {
+  if (unlistenFn) unlistenFn()
+  clearTimeout(detectedTimer)
+})
+</script>
+
+<style scoped>
+.wake-wrap { display: flex; align-items: center; }
+
+.wake-btn {
+  position: relative;
+  display: flex; align-items: center; gap: 6px;
+  padding: 6px 12px;
+  background: rgba(167,139,250,0.1);
+  border: 1px solid rgba(167,139,250,0.2);
+  border-radius: var(--radius-sm);
+  color: var(--accent-purple);
+  font-size: 0.8rem; font-weight: 500;
+  cursor: pointer; overflow: visible;
+  transition: all 0.2s;
+}
+.wake-btn:hover { background: rgba(167,139,250,0.18); }
+
+.wake-btn.active {
+  background: rgba(167,139,250,0.2);
+  border-color: rgba(167,139,250,0.5);
+  box-shadow: 0 0 14px rgba(167,139,250,0.25);
+  animation: wake-pulse 2s infinite;
+}
+.wake-btn.detected {
+  background: rgba(99,179,237,0.2);
+  border-color: rgba(99,179,237,0.5);
+  color: var(--accent-blue);
+  box-shadow: 0 0 18px rgba(99,179,237,0.35);
+  animation: none;
+}
+
+/* 波纹圆环 */
+.wake-ring {
+  position: absolute; inset: -6px;
+  border-radius: inherit;
+  border: 2px solid rgba(167,139,250,0.35);
+  animation: ring-expand 1.6s ease-out infinite;
+  pointer-events: none;
+}
+.detected .wake-ring { border-color: rgba(99,179,237,0.4); }
+
+@keyframes ring-expand {
+  0%  { transform: scale(1);   opacity: 0.8; }
+  100% { transform: scale(1.5); opacity: 0; }
+}
+@keyframes wake-pulse {
+  0%   { box-shadow: 0 0 0 0 rgba(167,139,250,0.4); }
+  70%  { box-shadow: 0 0 0 8px rgba(167,139,250,0); }
+  100% { box-shadow: 0 0 0 0 rgba(167,139,250,0); }
+}
+</style>

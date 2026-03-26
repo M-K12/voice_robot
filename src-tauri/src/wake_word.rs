@@ -135,11 +135,6 @@ fn wake_loop(
     let mut porcupine: *mut PvPorcupine = std::ptr::null_mut();
     let c_device = CString::new("best")?;
 
-    println!("[Porcupine] 调用 pv_porcupine_init (7 args), num_keywords: {}", num_keywords);
-    for (i, p) in valid_paths.iter().enumerate() {
-        println!("[Porcupine] Keyword[{}]: {}", i, p);
-    }
-
     let status = unsafe {
         pv_porcupine_init(
             c_key.as_ptr(),
@@ -151,8 +146,6 @@ fn wake_loop(
             &mut porcupine,
         )
     };
-    println!("[Porcupine] pv_porcupine_init 返回 status: {}", status);
-    println!("[Porcupine] pv_porcupine_init (7 args) 返回 status: {}", status);
     
     if status != 0 {
         anyhow::bail!("pv_porcupine_init 失败，status={status}");

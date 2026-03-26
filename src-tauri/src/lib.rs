@@ -9,10 +9,10 @@ use livekit_manager::LivekitManager;
 async fn start_wake_word(
     app: tauri::AppHandle,
     access_key: String,
-    keyword_path: String,
+    keyword_paths: Vec<String>,
     model_path: String,
 ) -> Result<(), String> {
-    wake_word::start(app, access_key, keyword_path, model_path)
+    wake_word::start(app, access_key, keyword_paths, model_path)
         .map_err(|e| e.to_string())
 }
 
@@ -54,6 +54,7 @@ async fn stop_livekit_connection(
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_dialog::init())
         .manage(Arc::new(Mutex::new(LivekitManager::new())))
         .invoke_handler(tauri::generate_handler![
             start_wake_word,

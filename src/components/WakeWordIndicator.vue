@@ -20,7 +20,7 @@ import { ref, watch, onUnmounted, onMounted } from 'vue'
 // ... (props and state) ...
 const props = defineProps({
   accessKey: { type: String, default: '' },
-  keywordPath: { type: String, default: '' },
+  keywordPaths: { type: [String, Array], default: () => [] },
   modelPath: { type: String, default: '' },
 })
 
@@ -73,16 +73,22 @@ async function toggleWake() {
 
   try {
     // 订阅唤醒事件
-    unlistenFn = await tauriListen('wake-word-detected', () => {
+    unlistenFn = await tauriListen('wake-word-detected', (event) => {
       justDetected.value = true
-      emit('wake')
+      // event.payload 是触发的关键字索引
+      emit('wake', event.payload)
       clearTimeout(detectedTimer)
       detectedTimer = setTimeout(() => { justDetected.value = false }, 2500)
     })
 
+    // 处理 keywordPaths，如果是逗号分隔的字符串则转换为数组
+    const paths = Array.isArray(props.keywordPaths)
+      ? props.keywordPaths
+      : props.keywordPaths.split(',').map(s => s.trim()).filter(s => s.length > 0)
+
     await tauriInvoke('start_wake_word', {
       accessKey: props.accessKey,
-      keywordPath: props.keywordPath,
+      keywordPaths: paths,
       modelPath: props.modelPath,
     })
     isListening.value = true

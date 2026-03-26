@@ -15,7 +15,7 @@
       <div class="toolbar-actions">
         <WakeWordIndicator
           :access-key="settings.picovoiceKey"
-          :keyword-path="settings.keywordPath"
+          :keyword-paths="[settings.keywordPathStart, settings.keywordPathStop]"
           :model-path="settings.modelPath"
           @wake="onWakeDetected"
         />
@@ -120,21 +120,45 @@
       <div v-if="showSettings" class="modal-overlay" @click.self="showSettings = false">
         <div class="modal">
           <h3>⚙️ 设置</h3>
-          <label>DashScope API Key
-            <input v-model="settings.dashscopeKey" type="password" placeholder="sk-..." />
-          </label>
-          <label>Picovoice AccessKey
-            <input v-model="settings.picovoiceKey" type="password" placeholder="O8KPp..." />
-          </label>
-          <label>唤醒词文件路径（.ppn）
-            <input v-model="settings.keywordPath" type="text" :placeholder="defaultKwPath" />
-          </label>
-          <label>模型文件路径（porcupine_params.pv）
-            <input v-model="settings.modelPath" type="text" :placeholder="defaultModelPath" />
-          </label>
-          <label>后端地址
-            <input v-model="settings.backendUrl" type="text" />
-          </label>
+          <div class="settings-grid">
+            <label>DashScope API Key
+              <input v-model="settings.dashscopeKey" type="password" placeholder="sk-..." />
+            </label>
+            <label>Picovoice AccessKey
+              <input v-model="settings.picovoiceKey" type="password" placeholder="O8KPp..." />
+            </label>
+            
+            <div class="field-row">
+              <label>开始唤醒词 (.ppn)
+                <div class="input-with-btn">
+                  <input v-model="settings.keywordPathStart" type="text" />
+                  <button @click.stop="pickFile('keywordPathStart', 'ppn')">📂</button>
+                </div>
+              </label>
+            </div>
+
+            <div class="field-row">
+              <label>结束唤醒词 (.ppn)
+                <div class="input-with-btn">
+                  <input v-model="settings.keywordPathStop" type="text" placeholder="可选，留空则不启用" />
+                  <button @click.stop="pickFile('keywordPathStop', 'ppn')">📂</button>
+                </div>
+              </label>
+            </div>
+
+            <div class="field-row">
+              <label>全局模型文件 (.pv)
+                <div class="input-with-btn">
+                  <input v-model="settings.modelPath" type="text" />
+                  <button @click.stop="pickFile('modelPath', 'pv')">📂</button>
+                </div>
+              </label>
+            </div>
+
+            <label>后端地址
+              <input v-model="settings.backendUrl" type="text" />
+            </label>
+          </div>
           <div class="modal-actions">
             <button class="btn-cancel" @click="showSettings = false">取消</button>
             <button class="btn-save" @click="saveSettings">保存</button>
@@ -150,6 +174,7 @@ import { ref, reactive, nextTick, onMounted } from 'vue'
 import ChatBubble from './components/ChatBubble.vue'
 import WeatherCard from './components/WeatherCard.vue'
 import WakeWordIndicator from './components/WakeWordIndicator.vue'
+import { open } from '@tauri-apps/plugin-dialog'
 
 // ── Tauri API（懒加载，在浏览器中 fallback 为 null）
 let tauriInvoke = null
@@ -179,7 +204,8 @@ const defaultModelPath = String.raw`D:\Ming\voice_robot\porcupine\lib\common\por
 const settings = reactive({
   dashscopeKey: localStorage.getItem('dashscopeKey') || '',
   picovoiceKey: localStorage.getItem('picovoiceKey') || 'O8KPpv2UQ9AP5nY7ACJ/ChQOQT8HfX+K80mECRx1SokHqSGwYB84Dg==',
-  keywordPath: localStorage.getItem('keywordPath') || defaultKwPath,
+  keywordPathStart: localStorage.getItem('keywordPathStart') || defaultKwPath,
+  keywordPathStop: localStorage.getItem('keywordPathStop') || '',
   modelPath: localStorage.getItem('modelPath') || defaultModelPath,
   backendUrl: localStorage.getItem('backendUrl') || 'http://127.0.0.1:8765',
 })
@@ -549,14 +575,26 @@ async function endVoiceCall() {
 }
 
 // ── 唤醒词触发
-function onWakeDetected() {
-  if (!inCall.value) {
-    startVoiceCall()
+function onWakeDetected(index) {
+  console.log('[App] 唤醒词触发，索引：', index)
+  
+  // 约定：索引 0 为启动，索引 1 为结束
+  if (index === 0) {
+    if (!inCall.value) {
+      startVoiceCall()
+      if (messages.value.length === 0) {
+        messages.value.push({ role: 'assistant', content: '我在，请吩咐。', isFinal: true })
+        scrollToBottom()
+      }
+    }
+  } else if (index === 1) {
+    if (inCall.value) {
+      endVoiceCall()
+      messages.value.push({ role: 'assistant', content: '好的，先退下了。', isFinal: true })
+      scrollToBottom()
+    }
   }
-  if (messages.value.length === 0) {
-    messages.value.push({ role: 'assistant', content: '我在，请吩咐。', isFinal: true })
-    scrollToBottom()
-  }
+
   nextTick(() => inputEl.value?.focus())
 }
 
@@ -607,6 +645,21 @@ async function toggleFullscreen() {
 async function toggleOnTop() {
   isOnTop.value = !isOnTop.value
   if (tauriInvoke) await tauriInvoke('set_always_on_top', { onTop: isOnTop.value })
+}
+
+// ── 文件选择
+async function pickFile(key, extension) {
+  try {
+    const selected = await open({
+      multiple: false,
+      filters: [{ name: 'Porcupine File', extensions: [extension] }]
+    })
+    if (selected) {
+      settings[key] = selected
+    }
+  } catch (e) {
+    console.error('File picker error:', e)
+  }
 }
 
 function clearChat() {
@@ -888,5 +941,37 @@ textarea::placeholder { color: var(--text-muted); }
   color: #888;
   font-style: italic;
   transition: color 0.3s;
+}
+/* ── 设置弹窗样式升级 */
+.settings-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 10px;
+}
+.field-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.input-with-btn {
+  display: flex;
+  gap: 8px;
+}
+.input-with-btn input {
+  flex: 1;
+}
+.input-with-btn button {
+  padding: 0 10px;
+  background: var(--bg-input);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.input-with-btn button:hover {
+  background: rgba(255,255,255,0.1);
+  border-color: var(--accent-blue);
 }
 </style>

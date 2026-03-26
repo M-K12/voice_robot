@@ -68,7 +68,7 @@ fn handle_store() -> &'static Mutex<Option<JoinHandle<()>>> {
 pub fn start(
     app: tauri::AppHandle,
     access_key: String,
-    keyword_path: String,
+    keyword_paths: Vec<String>,
     model_path: String,
 ) -> anyhow::Result<()> {
     if RUNNING.load(Ordering::SeqCst) {
@@ -79,7 +79,7 @@ pub fn start(
     let app_clone = app.clone();
 
     let handle = thread::spawn(move || {
-        if let Err(e) = wake_loop(app_clone, &access_key, &keyword_path, &model_path) {
+        if let Err(e) = wake_loop(app_clone, &access_key, &keyword_paths, &model_path) {
             eprintln!("[wake_word] 线程退出，错误：{e}");
         }
         RUNNING.store(false, Ordering::SeqCst);
@@ -103,29 +103,57 @@ pub fn stop() {
 fn wake_loop(
     app: tauri::AppHandle,
     access_key: &str,
-    keyword_path: &str,
+    keyword_paths: &[String],
     model_path: &str,
 ) -> anyhow::Result<()> {
     // 1. 初始化 Porcupine
+    println!("[Porcupine] 开始初始化...");
     let c_key = CString::new(access_key)?;
     let c_model = CString::new(model_path)?;
-    let c_kw = CString::new(keyword_path)?;
-    let c_device = CString::new("cpu")?;
-    let kw_ptr = c_kw.as_ptr();
-    let sensitivity: f32 = 0.5;
+
+    // 过滤空路径（如果用户没有设置结束唤醒词，前端传过来的可能是空字符串）
+    let valid_paths: Vec<String> = keyword_paths
+        .iter()
+        .filter(|p| !p.trim().is_empty())
+        .cloned()
+        .collect();
+
+    if valid_paths.is_empty() {
+        anyhow::bail!("未设置任何有效的唤醒词路径");
+    }
+
+    // 转换所有关键字路径为 CString
+    let c_keyword_paths: Vec<CString> = valid_paths
+        .iter()
+        .map(|p| CString::new(p.as_str()).unwrap())
+        .collect();
+    let keyword_ptrs: Vec<*const c_char> = c_keyword_paths.iter().map(|s| s.as_ptr()).collect();
+    
+    let num_keywords = valid_paths.len() as c_int;
+    let sensitivities: Vec<f32> = vec![0.5; valid_paths.len()];
 
     let mut porcupine: *mut PvPorcupine = std::ptr::null_mut();
+    let c_device = CString::new("best")?;
+
+    println!("[Porcupine] 调用 pv_porcupine_init (7 args), num_keywords: {}", num_keywords);
+    for (i, p) in valid_paths.iter().enumerate() {
+        println!("[Porcupine] Keyword[{}]: {}", i, p);
+    }
+
     let status = unsafe {
         pv_porcupine_init(
             c_key.as_ptr(),
             c_model.as_ptr(),
             c_device.as_ptr(),
-            1,
-            &kw_ptr,
-            &sensitivity,
+            num_keywords,
+            keyword_ptrs.as_ptr(),
+            sensitivities.as_ptr(),
             &mut porcupine,
         )
     };
+    println!("[Porcupine] pv_porcupine_init 返回 status: {}", status);
+    println!("[Porcupine] pv_porcupine_init (7 args) 返回 status: {}", status);
+    
     if status != 0 {
         anyhow::bail!("pv_porcupine_init 失败，status={status}");
     }

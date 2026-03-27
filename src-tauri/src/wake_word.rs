@@ -154,126 +154,193 @@ fn wake_loop(
     let frame_len = unsafe { pv_porcupine_frame_length() } as usize;
     let sample_rate = unsafe { pv_sample_rate() } as u32; // 通常 16000
 
-    // 2. 初始化 cpal 输入流，帧缓冲通过 channel 发送给检测循环
-    let (tx, rx) = std::sync::mpsc::channel::<Vec<i16>>();
-    let host = cpal::default_host();
-    let device = host
-        .default_input_device()
-        .ok_or_else(|| anyhow::anyhow!("未找到麦克风设备"))?;
+    // 2. 音频流初始化 + 检测循环（含自动恢复）
+    'audio_loop: loop {
+        if !RUNNING.load(Ordering::SeqCst) { break; }
 
-    let default_config = device.default_input_config()
-        .map_err(|e| anyhow::anyhow!("获取默认麦克风配置失败: {}", e))?;
-    
-    let actual_sample_rate = default_config.sample_rate().0;
-    let channels = default_config.channels();
-    let sample_format = default_config.sample_format();
-    let config: cpal::StreamConfig = default_config.into();
+        let (tx, rx) = std::sync::mpsc::channel::<Vec<i16>>();
+        let host = cpal::default_host();
+        let device = match host.default_input_device() {
+            Some(d) => d,
+            None => {
+                eprintln!("[wake_word] 未找到麦克风设备，2秒后重试...");
+                let _ = app.emit("microphone-error", "未找到麦克风设备");
+                std::thread::sleep(std::time::Duration::from_secs(2));
+                continue 'audio_loop;
+            }
+        };
 
-    let err_fn = |err| eprintln!("[cpal] 输入流错误：{err}");
+        let default_config = match device.default_input_config() {
+            Ok(c) => c,
+            Err(e) => {
+                eprintln!("[wake_word] 获取麦克风配置失败: {}，2秒后重试...", e);
+                let _ = app.emit("microphone-error", "麦克风配置获取失败");
+                std::thread::sleep(std::time::Duration::from_secs(2));
+                continue 'audio_loop;
+            }
+        };
 
-    // 简易动态重采样器 (Nearest-neighbor)
-    let ratio = actual_sample_rate as f32 / sample_rate as f32;
-    
+        let actual_sample_rate = default_config.sample_rate().0;
+        let channels = default_config.channels();
+        let sample_format = default_config.sample_format();
+        let config: cpal::StreamConfig = default_config.into();
 
+        let mic_error_flag = std::sync::Arc::new(AtomicBool::new(false));
+        let mic_error_flag_clone = mic_error_flag.clone();
+        let err_fn = move |err: cpal::StreamError| {
+            let err_str = err.to_string();
+            eprintln!("[cpal] 输入流错误：{}", err_str);
+            mic_error_flag_clone.store(true, Ordering::SeqCst);
+        };
 
-    let stream = match sample_format {
-        cpal::SampleFormat::F32 => {
-            let mut phase = 0.0;
-            device.build_input_stream(
-                &config,
-                move |data: &[f32], _| {
-                    let mono: Vec<i16> = data.iter().step_by(channels as usize).map(|&s| (s * i16::MAX as f32) as i16).collect();
-                    let mut resampled = Vec::new();
-                    if actual_sample_rate == sample_rate {
-                        resampled = mono;
-                    } else {
-                        for &sample in &mono {
-                            phase += 1.0;
-                            if phase >= ratio {
-                                phase -= ratio;
-                                resampled.push(sample);
+        let ratio = actual_sample_rate as f32 / sample_rate as f32;
+
+        let stream = match sample_format {
+            cpal::SampleFormat::F32 => {
+                let mut phase = 0.0;
+                match device.build_input_stream(
+                    &config,
+                    move |data: &[f32], _| {
+                        let mono: Vec<i16> = data.iter().step_by(channels as usize).map(|&s| (s * i16::MAX as f32) as i16).collect();
+                        let mut resampled = Vec::new();
+                        if actual_sample_rate == sample_rate {
+                            resampled = mono;
+                        } else {
+                            for &sample in &mono {
+                                phase += 1.0;
+                                if phase >= ratio {
+                                    phase -= ratio;
+                                    resampled.push(sample);
+                                }
                             }
                         }
+                        let _ = tx.send(resampled);
+                    },
+                    err_fn,
+                    None,
+                ) {
+                    Ok(s) => s,
+                    Err(e) => {
+                        eprintln!("[wake_word] 创建音频流失败: {}，2秒后重试...", e);
+                        let _ = app.emit("microphone-error", "创建音频流失败");
+                        std::thread::sleep(std::time::Duration::from_secs(2));
+                        continue 'audio_loop;
                     }
-                    let _ = tx.send(resampled);
-                },
-                err_fn,
-                None,
-            )?
-        },
-        cpal::SampleFormat::I16 => {
-            let mut phase = 0.0;
-            device.build_input_stream(
-                &config,
-                move |data: &[i16], _| {
-                    let mono: Vec<i16> = data.iter().step_by(channels as usize).copied().collect();
-                    let mut resampled = Vec::new();
-                    if actual_sample_rate == sample_rate {
-                        resampled = mono;
-                    } else {
-                        for &sample in &mono {
-                            phase += 1.0;
-                            if phase >= ratio {
-                                phase -= ratio;
-                                resampled.push(sample);
+                }
+            },
+            cpal::SampleFormat::I16 => {
+                let mut phase = 0.0;
+                match device.build_input_stream(
+                    &config,
+                    move |data: &[i16], _| {
+                        let mono: Vec<i16> = data.iter().step_by(channels as usize).copied().collect();
+                        let mut resampled = Vec::new();
+                        if actual_sample_rate == sample_rate {
+                            resampled = mono;
+                        } else {
+                            for &sample in &mono {
+                                phase += 1.0;
+                                if phase >= ratio {
+                                    phase -= ratio;
+                                    resampled.push(sample);
+                                }
                             }
                         }
+                        let _ = tx.send(resampled);
+                    },
+                    err_fn,
+                    None,
+                ) {
+                    Ok(s) => s,
+                    Err(e) => {
+                        eprintln!("[wake_word] 创建音频流失败: {}，2秒后重试...", e);
+                        let _ = app.emit("microphone-error", "创建音频流失败");
+                        std::thread::sleep(std::time::Duration::from_secs(2));
+                        continue 'audio_loop;
                     }
-                    let _ = tx.send(resampled);
-                },
-                err_fn,
-                None,
-            )?
-        },
-        cpal::SampleFormat::U16 => {
-            let mut phase = 0.0;
-            device.build_input_stream(
-                &config,
-                move |data: &[u16], _| {
-                    let mono: Vec<i16> = data.iter().step_by(channels as usize).map(|&s| (s as i32 - 32768) as i16).collect();
-                    let mut resampled = Vec::new();
-                    if actual_sample_rate == sample_rate {
-                        resampled = mono;
-                    } else {
-                        for &sample in &mono {
-                            phase += 1.0;
-                            if phase >= ratio {
-                                phase -= ratio;
-                                resampled.push(sample);
+                }
+            },
+            cpal::SampleFormat::U16 => {
+                let mut phase = 0.0;
+                match device.build_input_stream(
+                    &config,
+                    move |data: &[u16], _| {
+                        let mono: Vec<i16> = data.iter().step_by(channels as usize).map(|&s| (s as i32 - 32768) as i16).collect();
+                        let mut resampled = Vec::new();
+                        if actual_sample_rate == sample_rate {
+                            resampled = mono;
+                        } else {
+                            for &sample in &mono {
+                                phase += 1.0;
+                                if phase >= ratio {
+                                    phase -= ratio;
+                                    resampled.push(sample);
+                                }
                             }
                         }
+                        let _ = tx.send(resampled);
+                    },
+                    err_fn,
+                    None,
+                ) {
+                    Ok(s) => s,
+                    Err(e) => {
+                        eprintln!("[wake_word] 创建音频流失败: {}，2秒后重试...", e);
+                        let _ = app.emit("microphone-error", "创建音频流失败");
+                        std::thread::sleep(std::time::Duration::from_secs(2));
+                        continue 'audio_loop;
                     }
-                    let _ = tx.send(resampled);
-                },
-                err_fn,
-                None,
-            )?
-        },
-        _ => return Err(anyhow::anyhow!("不支持的音频样本格式: {:?}", sample_format)),
-    };
-    stream.play()?;
+                }
+            },
+            _ => return Err(anyhow::anyhow!("不支持的音频样本格式: {:?}", sample_format)),
+        };
 
-    // 3. 检测循环
-    let mut buf: Vec<i16> = Vec::new();
-    while RUNNING.load(Ordering::SeqCst) {
-        if let Ok(chunk) = rx.recv_timeout(std::time::Duration::from_millis(100)) {
-            buf.extend_from_slice(&chunk);
-            while buf.len() >= frame_len {
-                let frame: Vec<i16> = buf.drain(..frame_len).collect();
-                let mut keyword_index: c_int = -1;
-                let st = unsafe {
-                    pv_porcupine_process(porcupine, frame.as_ptr(), &mut keyword_index)
-                };
-                if st == 0 && keyword_index >= 0 {
-                    let _ = app.emit("wake-word-detected", keyword_index);
-                    eprintln!("[wake_word] 唤醒词触发！keyword_index={keyword_index}");
+        if let Err(e) = stream.play() {
+            eprintln!("[wake_word] 启动音频流失败: {}，2秒后重试...", e);
+            let _ = app.emit("microphone-error", "启动音频流失败");
+            std::thread::sleep(std::time::Duration::from_secs(2));
+            continue 'audio_loop;
+        }
+
+        // 音频流创建成功，通知前端恢复
+        eprintln!("[wake_word] 麦克风音频流已就绪");
+        let _ = app.emit("microphone-recovered", "麦克风已恢复");
+
+        // 3. 检测循环
+        let mut buf: Vec<i16> = Vec::new();
+        while RUNNING.load(Ordering::SeqCst) {
+            // 检查麦克风错误标志
+            if mic_error_flag.load(Ordering::SeqCst) {
+                mic_error_flag.store(false, Ordering::SeqCst);
+                eprintln!("[wake_word] 麦克风错误，通知前端并尝试恢复...");
+                let _ = app.emit("microphone-error", "麦克风设备已断开或不可用");
+                // 丢弃当前 stream，跳到外层重试
+                drop(stream);
+                std::thread::sleep(std::time::Duration::from_secs(2));
+                continue 'audio_loop;
+            }
+            if let Ok(chunk) = rx.recv_timeout(std::time::Duration::from_millis(100)) {
+                buf.extend_from_slice(&chunk);
+                while buf.len() >= frame_len {
+                    let frame: Vec<i16> = buf.drain(..frame_len).collect();
+                    let mut keyword_index: c_int = -1;
+                    let st = unsafe {
+                        pv_porcupine_process(porcupine, frame.as_ptr(), &mut keyword_index)
+                    };
+                    if st == 0 && keyword_index >= 0 {
+                        let _ = app.emit("wake-word-detected", keyword_index);
+                        eprintln!("[wake_word] 唤醒词触发！keyword_index={keyword_index}");
+                    }
                 }
             }
         }
+
+        // RUNNING 变为 false，正常退出
+        drop(stream);
+        break;
     }
 
     // 4. 清理
-    drop(stream);
     unsafe { pv_porcupine_delete(porcupine) };
     Ok(())
 }

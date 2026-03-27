@@ -18,6 +18,8 @@
           :keyword-paths="[settings.keywordPathStart, settings.keywordPathStop]"
           :model-path="settings.modelPath"
           @wake="onWakeDetected"
+          @mic-error="onMicError"
+          @mic-recovered="onMicRecovered"
         />
         <button class="icon-btn" :class="{active: isFullscreen}" @click="toggleFullscreen" title="全屏">
           <span>{{ isFullscreen ? '⛶' : '⛶' }}</span>
@@ -68,8 +70,13 @@
         <div class="input-area">
           <!-- 语音状态浮层：通话中时显示在输入框上方 -->
           <Transition name="fadeUp">
-            <div class="call-overlay" v-if="inCall">
-              <div class="audio-visualizer-mini">
+            <div class="call-overlay" v-if="inCall || micErrorMsg">
+              <div v-if="micErrorMsg" class="mic-error-banner">
+                <span>⚠️ {{ micErrorMsg }}</span>
+                <button @click="micErrorMsg = ''">✕</button>
+              </div>
+              <template v-else>
+                <div class="audio-visualizer-mini">
                 <div class="bar" :style="{ transform: `scaleY(${visualizerVolume * 0.5 + 0.2})` }"></div>
                 <div class="bar" :style="{ transform: `scaleY(${visualizerVolume * 0.8 + 0.3})` }"></div>
                 <div class="bar" :style="{ transform: `scaleY(${visualizerVolume * 1.2 + 0.5})` }"></div>
@@ -78,8 +85,9 @@
               </div>
               <span class="call-hint">正在通话中...您可以说话或打字</span>
               <button class="btn-micro stop" @click="endVoiceCall" title="结束通话">挂断</button>
-            </div>
-          </Transition>
+            </template>
+          </div>
+        </Transition>
 
           <div class="input-wrapper" :class="{focused: inputFocused}">
             <textarea
@@ -98,8 +106,10 @@
               <button 
                 v-if="!inCall" 
                 class="btn-micro start" 
+                :class="{ disabled: micDisabled }"
+                :disabled="micDisabled"
                 @click="startVoiceCall" 
-                title="开启语音">
+                :title="micDisabled ? '麦克风不可用' : '开启语音'">
                 🎤
               </button>
               
@@ -195,6 +205,9 @@ const isOnTop = ref(false)
 const showSettings = ref(false)
 const inCall = ref(false) // Whether we are in live full-duplex mode
 const visualizerVolume = ref(1.0)
+const silenceTimer = ref(null) // 10秒静默挂断计时器
+const micErrorMsg = ref('')    // 麦克风异常提示
+const micDisabled = ref(false) // 麦克风不可用时置灰
 
 
 // ── 默认路径（Windows，基于项目结构）
@@ -376,6 +389,7 @@ let micProcessor = null   // ScriptProcessorNode
 let playCtx = null        // 播放用 AudioContext（24kHz）
 let playQueue = []        // PCM16 帧队列
 let isPlaying = false     // 是否正在播放
+let pendingSilenceTimer = false  // 是否等待播放完后启动静默计时器
 
 // 将 Float32 转为 PCM16 并加首字节前缀 0x00（协议标识 audio）
 function float32ToPcm16WithPrefix(input) {
@@ -416,6 +430,11 @@ async function enqueueAudio(pcm16bytes) {
       })
     }
     isPlaying = false
+    // 播放队列排空了，如果有等待的静默计时器，现在启动
+    if (pendingSilenceTimer) {
+      pendingSilenceTimer = false
+      startSilenceTimer()
+    }
   }
 }
 
@@ -429,6 +448,27 @@ function stopAudioPlayback() {
 }
 
 // ── 语音通话控制
+function startSilenceTimer() {
+  stopSilenceTimer()
+  silenceTimer.value = setTimeout(() => {
+    console.log('[SilenceDetector] 10秒无语音输入，准备挂断')
+    // 先显示提示消息
+    messages.value.push({ role: 'assistant', content: '如果没有其他问题，我先退下了。', isFinal: true })
+    scrollToBottom()
+    // 延迟2秒后挂断，给用户反应时间
+    silenceTimer.value = setTimeout(() => {
+      endVoiceCall()
+    }, 2000)
+  }, 10000)
+}
+
+function stopSilenceTimer() {
+  if (silenceTimer.value) {
+    clearTimeout(silenceTimer.value)
+    silenceTimer.value = null
+  }
+}
+
 async function startVoiceCall() {
   inCall.value = true
   try {
@@ -466,6 +506,9 @@ async function startVoiceCall() {
       }
       micSource.connect(micProcessor)
       micProcessor.connect(audioCtx.destination)
+      
+      // 连接建立时启动静默计时器
+      startSilenceTimer()
     }
 
     voiceWs.onerror = (e) => {
@@ -492,6 +535,9 @@ async function startVoiceCall() {
           } else if (msg.type === 'input_transcript') {
             // 用户说话的转录（最终结果）
             const now = Date.now()
+            
+            // 用户说话了，停止当前的静默计时器（防止在用户说话期间挂断）
+            stopSilenceTimer()
             // 往回找最近的由 voice_ws 发出的用户消息
             let lastUserMsg = null
             for (let i = messages.value.length - 1; i >= 0; i--) {
@@ -522,6 +568,12 @@ async function startVoiceCall() {
             // AI 回复的完整文本
             messages.value.push({ id: 'out-' + Date.now(), role: 'assistant', content: msg.data, isFinal: true })
             scrollToBottom()
+            // AI 文字回复完成，如果语音还在播放，等播放完再启动计时器
+            if (isPlaying) {
+              pendingSilenceTimer = true
+            } else {
+              startSilenceTimer()
+            }
           } else if (msg.type === 'weather_data') {
             weatherData.value = msg.data
             // 标记为 isWeather 以便后续总结替换内容
@@ -533,14 +585,20 @@ async function startVoiceCall() {
               isWeather: true 
             })
             scrollToBottom()
-          } else if (msg.type === 'weather_summary') {
-            // 收到总结后，替换掉之前的“正在总结”提示
-            const lastWeatherMsg = [...messages.value].reverse().find(m => m.isWeather)
-            if (lastWeatherMsg) {
-              lastWeatherMsg.content = msg.data
-              scrollToBottom()
+            } else if (msg.type === 'weather_summary') {
+              // 收到总结后，替换掉之前的“正在总结”提示
+              const lastWeatherMsg = [...messages.value].reverse().find(m => m.isWeather)
+              if (lastWeatherMsg) {
+                lastWeatherMsg.content = msg.data
+                scrollToBottom()
+              }
+            } else if (msg.type === 'hangup') {
+              // 收到挂断信号，延迟一点点让语音播完（如果有的话）
+              console.log('[voice_ws] Received hangup signal')
+              setTimeout(() => {
+                endVoiceCall()
+              }, 1500)
             }
-          }
         } catch (e) {
           console.warn('[voice_ws] 文本消息解析失败', e)
         }
@@ -572,6 +630,9 @@ async function endVoiceCall() {
     voiceWs.close()
     voiceWs = null
   }
+  
+  // 停止静默计时器
+  stopSilenceTimer()
 }
 
 // ── 唤醒词触发
@@ -596,6 +657,24 @@ function onWakeDetected(index) {
   }
 
   nextTick(() => inputEl.value?.focus())
+}
+
+// ── 麦克风异常处理
+function onMicError(errMsg) {
+  console.error('[App] 麦克风异常:', errMsg)
+  micDisabled.value = true
+  // 如果正在通话，自动挂断
+  if (inCall.value) {
+    endVoiceCall()
+    messages.value.push({ role: 'assistant', content: '麦克风异常，通话已自动挂断。', isFinal: true })
+    scrollToBottom()
+  }
+}
+
+// ── 麦克风恢复处理
+function onMicRecovered() {
+  console.log('[App] 麦克风已恢复')
+  micDisabled.value = false
 }
 
 import { listen } from '@tauri-apps/api/event'
@@ -633,6 +712,13 @@ onMounted(async () => {
     })
     await listen('livekit-volume', (event) => {
       visualizerVolume.value = event.payload?.volume || 1.0
+    })
+    await listen('microphone-error', (event) => {
+      console.log('[App] Microphone error event received:', event)
+      const msg = typeof event.payload === 'string' ? event.payload : (event.payload?.message || '麦克风异常');
+      micErrorMsg.value = msg
+      setTimeout(() => { micErrorMsg.value = '' }, 8000)
+      if (inCall.value) endVoiceCall()
     })
   }
 })
@@ -973,5 +1059,30 @@ textarea::placeholder { color: var(--text-muted); }
 .input-with-btn button:hover {
   background: rgba(255,255,255,0.1);
   border-color: var(--accent-blue);
+}
+.mic-error-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: rgba(239, 68, 68, 0.15);
+  border: 1px solid rgba(239, 68, 68, 0.5);
+  padding: 8px 16px;
+  border-radius: var(--radius-sm);
+  color: #f87171;
+  font-size: 0.85rem;
+  backdrop-filter: blur(10px);
+}
+.mic-error-banner button {
+  background: none;
+  border: none;
+  color: #f87171;
+  cursor: pointer;
+  font-size: 1.1rem;
+  padding: 0 4px;
+}
+.btn-micro.start.disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+  pointer-events: none;
 }
 </style>

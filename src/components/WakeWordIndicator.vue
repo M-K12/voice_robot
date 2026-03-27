@@ -3,13 +3,13 @@
     <!-- 唤醒按钮 -->
     <button
       class="wake-btn"
-      :class="{ active: isListening, detected: justDetected }"
-      @click="toggleWake"
-      :title="isListening ? '点击停止唤醒监听' : '点击启动唤醒词监听'"
+      :class="{ active: isListening, detected: justDetected, 'mic-error': micError }"
+      @click="micError ? clearMicError() : toggleWake()"
+      :title="micError ? '麦克风异常，点击重新连接' : isListening ? '点击停止唤醒监听' : '点击启动唤醒词监听'"
     >
-      <span class="wake-ring" v-if="isListening || justDetected"></span>
-      <span class="wake-icon">{{ justDetected ? '🎙️' : isListening ? '👂' : '✨' }}</span>
-      <span class="wake-label">{{ justDetected ? '已唤醒' : isListening ? '聆听中' : '唤醒' }}</span>
+      <span class="wake-ring" v-if="(isListening || justDetected) && !micError"></span>
+      <span class="wake-icon">{{ micError ? '⚠️' : justDetected ? '🎙️' : isListening ? '👂' : '✨' }}</span>
+      <span class="wake-label">{{ micError ? '麦克风异常' : justDetected ? '已唤醒' : isListening ? '聆听中' : '唤醒' }}</span>
     </button>
   </div>
 </template>
@@ -24,11 +24,13 @@ const props = defineProps({
   modelPath: { type: String, default: '' },
 })
 
-const emit = defineEmits(['wake'])
+const emit = defineEmits(['wake', 'mic-error', 'mic-recovered'])
 
 const isListening = ref(false)
 const justDetected = ref(false)
+const micError = ref(false)
 let unlistenFn = null
+let unlistenMicError = null
 let detectedTimer = null
 
 // Tauri API（懒加载）
@@ -99,17 +101,44 @@ async function toggleWake() {
   }
 }
 
-onMounted(() => {
+onMounted(async () => {
   // 组件挂载后稍作延迟自动启动唤醒监听
   setTimeout(() => {
     if (!isListening.value) {
       toggleWake()
     }
   }, 1000)
+
+  // 监听麦克风错误事件
+  const hasTauri = await loadTauriApis()
+  if (hasTauri && tauriListen) {
+    unlistenMicError = await tauriListen('microphone-error', (event) => {
+      console.error('[WakeWordIndicator] 麦克风异常:', event.payload)
+      micError.value = true
+      isListening.value = false
+      emit('mic-error', event.payload)
+    })
+    unlistenMicRecovered = await tauriListen('microphone-recovered', (event) => {
+      console.log('[WakeWordIndicator] 麦克风已恢复:', event.payload)
+      micError.value = false
+      isListening.value = true
+      emit('mic-recovered')
+    })
+  }
 })
+
+function clearMicError() {
+  micError.value = false
+  // 尝试重新启动唤醒监听
+  toggleWake()
+}
+
+let unlistenMicRecovered = null
 
 onUnmounted(() => {
   if (unlistenFn) unlistenFn()
+  if (unlistenMicError) unlistenMicError()
+  if (unlistenMicRecovered) unlistenMicRecovered()
   clearTimeout(detectedTimer)
 })
 </script>
@@ -163,5 +192,16 @@ onUnmounted(() => {
   0%   { box-shadow: 0 0 0 0 rgba(167,139,250,0.4); }
   70%  { box-shadow: 0 0 0 8px rgba(167,139,250,0); }
   100% { box-shadow: 0 0 0 0 rgba(167,139,250,0); }
+}
+/* 麦克风异常 */
+.wake-btn.mic-error {
+  background: rgba(239, 68, 68, 0.15);
+  border-color: rgba(239, 68, 68, 0.5);
+  color: #f87171;
+  box-shadow: 0 0 14px rgba(239, 68, 68, 0.25);
+  animation: none;
+}
+.wake-btn.mic-error:hover {
+  background: rgba(239, 68, 68, 0.25);
 }
 </style>

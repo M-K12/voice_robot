@@ -303,23 +303,53 @@ fn wake_loop(
         }
 
         // 音频流创建成功，通知前端恢复
-        eprintln!("[wake_word] 麦克风音频流已就绪");
+        let current_device_name = device.name().unwrap_or_default();
+        eprintln!("[wake_word] 麦克风音频流已就绪 (设备: {:?})", current_device_name);
         let _ = app.emit("microphone-recovered", "麦克风已恢复");
 
         // 3. 检测循环
         let mut buf: Vec<i16> = Vec::new();
+        let mut last_data_time = std::time::Instant::now();
+        let mut last_device_check = std::time::Instant::now();
+        let mut got_first_data = false;
         while RUNNING.load(Ordering::SeqCst) {
             // 检查麦克风错误标志
             if mic_error_flag.load(Ordering::SeqCst) {
                 mic_error_flag.store(false, Ordering::SeqCst);
                 eprintln!("[wake_word] 麦克风错误，通知前端并尝试恢复...");
                 let _ = app.emit("microphone-error", "麦克风设备已断开或不可用");
-                // 丢弃当前 stream，跳到外层重试
+                drop(stream);
+                std::thread::sleep(std::time::Duration::from_secs(2));
+                continue 'audio_loop;
+            }
+            // 每5秒检查系统默认设备是否变化
+            if last_device_check.elapsed() > std::time::Duration::from_secs(5) {
+                last_device_check = std::time::Instant::now();
+                let check_host = cpal::default_host();
+                if let Some(new_default) = check_host.default_input_device() {
+                    if let Ok(new_name) = new_default.name() {
+                        if new_name != current_device_name {
+                            eprintln!("[wake_word] 系统默认麦克风已变更: {:?} -> {:?}，切换中...", current_device_name, new_name);
+                            drop(stream);
+                            continue 'audio_loop;
+                        }
+                    }
+                }
+            }
+            // 检查是否长时间没收到音频数据（设备可能已失效但未报错）
+            if last_data_time.elapsed() > std::time::Duration::from_secs(5) {
+                eprintln!("[wake_word] 超过5秒无音频数据，重新初始化音频流...");
+                let _ = app.emit("microphone-error", "麦克风无数据响应");
                 drop(stream);
                 std::thread::sleep(std::time::Duration::from_secs(2));
                 continue 'audio_loop;
             }
             if let Ok(chunk) = rx.recv_timeout(std::time::Duration::from_millis(100)) {
+                if !got_first_data {
+                    eprintln!("[wake_word] 首次收到音频数据");
+                    got_first_data = true;
+                }
+                last_data_time = std::time::Instant::now();
                 buf.extend_from_slice(&chunk);
                 while buf.len() >= frame_len {
                     let frame: Vec<i16> = buf.drain(..frame_len).collect();

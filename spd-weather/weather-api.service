@@ -1,0 +1,27 @@
+[Unit]
+Description=SPD Weather API Service
+After=network.target
+
+[Service]
+# 请将 ubuntu 修改为你在服务器上的实际用户名
+User=ubuntu
+Group=ubuntu
+# 请修改为你实际上传代码的路径
+WorkingDirectory=/opt/spd-weather/scripts
+
+# 环境变量：配置你的 SPD_WEATHER_TOKEN
+Environment="SPD_WEATHER_TOKEN="
+
+# 【注意】这里必须使用 conda 环境中的完整 uvicorn 绝对路径
+# 例如如果你的 conda 安装在 /home/ubuntu/miniconda3，那么路径形如：
+# /home/ubuntu/miniconda3/envs/py12/bin/uvicorn
+ExecStart=/path/to/your/conda/envs/py12/bin/uvicorn weather_api:app --host 0.0.0.0 --port 8000 --workers 2
+
+Restart=always
+RestartSec=5
+StandardOutput=syslog
+StandardError=syslog
+SyslogIdentifier=spd-weather-api
+
+[Install]
+WantedBy=multi-user.target

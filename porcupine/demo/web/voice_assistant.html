@@ -1,0 +1,255 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>语音助手 - Voice Assistant</title>
+    <script src="node_modules/@picovoice/web-voice-processor/dist/iife/index.js"></script>
+    <script src="node_modules/@picovoice/porcupine-web/dist/iife/index.js"></script>
+    <script>
+      const keywordsScript = document.createElement('script');
+      keywordsScript.src = 'keywords/porcupineKeywords.js?t=' + Date.now();
+      document.head.appendChild(keywordsScript);
+    </script>
+    <script>
+      const modelScript = document.createElement('script');
+      modelScript.src = 'models/porcupineModel.js?t=' + Date.now();
+      document.head.appendChild(modelScript);
+    </script>
+    <script type="application/javascript" src="scripts/voice_assistant.js"></script>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      
+      body {
+        font-family: 'Microsoft YaHei', 'Segoe UI', Arial, sans-serif;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        min-height: 100vh;
+        padding: 20px;
+      }
+      
+      .container {
+        max-width: 800px;
+        margin: 0 auto;
+        background: white;
+        border-radius: 20px;
+        padding: 40px;
+        box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+      }
+      
+      h1 {
+        color: #667eea;
+        text-align: center;
+        margin-bottom: 10px;
+        font-size: 32px;
+      }
+      
+      .subtitle {
+        text-align: center;
+        color: #666;
+        margin-bottom: 30px;
+        font-size: 16px;
+      }
+      
+      .info-box {
+        background: #f0f4ff;
+        border-left: 4px solid #667eea;
+        padding: 15px;
+        margin: 20px 0;
+        border-radius: 5px;
+      }
+      
+      .form-group {
+        margin-bottom: 20px;
+      }
+      
+      label {
+        display: block;
+        margin-bottom: 8px;
+        font-weight: 600;
+        color: #333;
+      }
+      
+      input[type="text"] {
+        width: 100%;
+        padding: 12px;
+        border: 2px solid #e0e0e0;
+        border-radius: 8px;
+        font-size: 14px;
+        transition: border-color 0.3s;
+      }
+      
+      input[type="text"]:focus {
+        outline: none;
+        border-color: #667eea;
+      }
+      
+      select {
+        width: 100%;
+        padding: 12px;
+        border: 2px solid #e0e0e0;
+        border-radius: 8px;
+        font-size: 14px;
+        background: white;
+        cursor: pointer;
+      }
+      
+      .button-group {
+        display: flex;
+        gap: 10px;
+        margin: 20px 0;
+      }
+      
+      button {
+        flex: 1;
+        padding: 15px;
+        border: none;
+        border-radius: 10px;
+        font-size: 16px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.3s;
+      }
+      
+      .btn-start {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+      }
+      
+      .btn-start:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 20px rgba(102, 126, 234, 0.6);
+      }
+      
+      .btn-stop {
+        background: #f5f5f5;
+        color: #666;
+        border: 2px solid #e0e0e0;
+      }
+      
+      .btn-stop:hover {
+        background: #e0e0e0;
+      }
+      
+      button:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+        transform: none !important;
+      }
+      
+      .status-box {
+        background: #f8f9fa;
+        border-radius: 10px;
+        padding: 20px;
+        margin: 20px 0;
+        min-height: 80px;
+      }
+      
+      .status-box.active {
+        background: #d4edda;
+        border: 2px solid #28a745;
+      }
+      
+      .status-box.detected {
+        background: #d1ecf1;
+        border: 2px solid #17a2b8;
+        animation: pulse 0.5s;
+      }
+      
+      @keyframes pulse {
+        0%, 100% { transform: scale(1); }
+        50% { transform: scale(1.02); }
+      }
+      
+      .status-box.error {
+        background: #f8d7da;
+        border: 2px solid #dc3545;
+      }
+      
+      #status {
+        white-space: pre-wrap;
+        font-size: 14px;
+        color: #333;
+      }
+      
+      #result {
+        margin-top: 10px;
+        padding: 15px;
+        background: white;
+        border-radius: 8px;
+        font-weight: 600;
+        color: #667eea;
+        min-height: 50px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h1>🤖 语音助手</h1>
+      <div class="subtitle">Voice Assistant with Wake Word Detection</div>
+      
+      <div class="info-box">
+        <strong>💡 使用说明：</strong><br>
+        1. 输入你的 AccessKey<br>
+        2. 选择唤醒词<br>
+        3. 点击"启动语音助手"<br>
+        4. 说出唤醒词，聊天窗口将自动打开
+      </div>
+      
+      <div class="form-group">
+        <label for="accessKey">
+          AccessKey 
+          <small>(从 <a href="https://console.picovoice.ai/" target="_blank">Picovoice Console</a> 获取)</small>
+        </label>
+        <input 
+          type="text" 
+          id="accessKey" 
+          name="accessKey" 
+          placeholder="输入你的 AccessKey"
+          value="Zv5jq4geVofI83wF5jVtJcQOCES66PFAaD2JqZD/ReakYH7YC2bPfw=="
+        />
+      </div>
+      
+      <div class="form-group">
+        <label for="keywords">选择唤醒词：</label>
+        <select id="keywords" name="keywords"></select>
+      </div>
+      
+      <div class="form-group">
+        <label for="chatUrl">聊天窗口 URL：</label>
+        <input 
+          type="text" 
+          id="chatUrl" 
+          name="chatUrl" 
+          placeholder="输入聊天服务地址"
+          value="http://127.0.0.1:18789/#token=0d5aa4d6fbf114aac5ae1d92a630735bcd3731b9b34b1fba"
+        />
+      </div>
+      
+      <div class="button-group">
+        <button 
+          class="btn-start" 
+          id="startBtn"
+          onclick="startVoiceAssistant()">
+          🎙️ 启动语音助手
+        </button>
+        <button 
+          class="btn-stop" 
+          id="stopBtn"
+          onclick="stopVoiceAssistant()"
+          disabled>
+          ⏹️ 停止助手
+        </button>
+      </div>
+      
+      <div class="status-box" id="statusBox">
+        <div id="status">准备就绪，点击"启动语音助手"开始</div>
+        <div id="result"></div>
+      </div>
+    </div>
+  </body>
+</html>

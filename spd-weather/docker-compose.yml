@@ -1,0 +1,24 @@
+version: '3.8'
+
+services:
+  weather-api:
+    build: .
+    image: spd-weather-api:latest
+    container_name: spd-weather-api
+    restart: always
+    ports:
+      - "8000:8000"
+    environment:
+      # 在运行前填入正式环境要使用的 Token，如果为空则使用代码默认值
+      - SPD_WEATHER_TOKEN=
+    volumes:
+      # 挂载缓存目录以便在容器重启后缓存不丢失（可选）
+      - ./assets/cache:/app/assets/cache
+    # 配置日志阈值
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    # 如果服务有严格时区需求可以把宿主机时区挂入容器
+    # - /etc/localtime:/etc/localtime:ro

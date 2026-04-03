@@ -11,10 +11,11 @@ dependencies = [
     "pydantic>=2.0",
     "websockets<14",
     "dashscope>=1.25.15",
-    "livekit-api>=1.1.0",
     "numpy>=2.4.4",
     "sherpa-onnx>=1.12.34",
     "onnxruntime>=1.18.0",
+    "sounddevice>=0.5.0",
+    "python-dotenv>=1.0.0",
 ]
 
 [tool.uv]

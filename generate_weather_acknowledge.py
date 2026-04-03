@@ -65,5 +65,5 @@ def generate_audio(text, output_path):
         print(f"Saved: {output_path}")
 
 if __name__ == "__main__":
-    out = "../jinxiangscreen2025/public/audio/wozai.wav"
-    generate_audio("我在", out)
+    out = "backend/static/audio/weather_filler.wav"
+    generate_audio("好的，这就为您查询咱这儿的天气，稍微等等哦。", out)

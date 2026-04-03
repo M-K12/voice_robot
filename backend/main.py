@@ -336,14 +336,21 @@ async def _handle_weather_query(transcript: str):
         print(f"[Weather] Error: {e}")
         traceback.print_exc()
 
-# ──────────────────────────────────────────────
-# KWS 唤醒循环（后台常驻）
-# ──────────────────────────────────────────────
+# Conversation interrupt event: set by KWS when wake word detected during active conversation
+_kws_interrupt_event: Optional[asyncio.Event] = None
+
 async def kws_loop(kws_queue: asyncio.Queue):
     """
     Continuously reads PCM from AudioManager and feeds to Sherpa-ONNX KWS.
-    On keyword detection, triggers conversation.
+    KWS always receives real mic data (always_real=True), so it can detect
+    wake words even while AI is speaking through the speaker.
+
+    On keyword detection:
+      - If no conversation active: start new conversation
+      - If conversation active: interrupt current playback (wake word interrupt)
     """
+    global _kws_interrupt_event
+
     if not KWS_SPOTTER:
         print("[KWS] No spotter loaded, kws_loop exiting.")
         return
@@ -370,17 +377,23 @@ async def kws_loop(kws_queue: asyncio.Queue):
                     print(f"[{datetime.now().strftime('%H:%M:%S')}] [KWS] 检测到唤醒词: {text}")
                     KWS_SPOTTER.reset_stream(stream)
 
-                    # Broadcast wake event to frontend
-                    await sse_hub.broadcast("wake", {})
-                    await sse_hub.broadcast("state_change", {"state": "listening"})
+                    if _conversation_active:
+                        # Conversation is active: interrupt playback
+                        print("[KWS] 对话中检测到唤醒词 → 打断 AI 播放")
+                        audio_manager.stop_playback()
+                        if _kws_interrupt_event:
+                            _kws_interrupt_event.set()
+                        await sse_hub.broadcast("interrupt", {})
+                    else:
+                        # No conversation: start new one
+                        await sse_hub.broadcast("wake", {})
+                        await sse_hub.broadcast("state_change", {"state": "listening"})
+                        await start_conversation()
 
-                    # Start conversation session
-                    await start_conversation(kws_queue)
-
-                    # After conversation ends, reset KWS stream and resume listening
-                    stream = KWS_SPOTTER.create_stream()
-                    print("[KWS] 对话结束，恢复唤醒监听。")
-                    await sse_hub.broadcast("state_change", {"state": "idle"})
+                        # After conversation ends, reset and resume
+                        stream = KWS_SPOTTER.create_stream()
+                        print("[KWS] 对话结束，恢复唤醒监听。")
+                        await sse_hub.broadcast("state_change", {"state": "idle"})
 
         except asyncio.CancelledError:
             break
@@ -392,19 +405,20 @@ async def kws_loop(kws_queue: asyncio.Queue):
 # ──────────────────────────────────────────────
 # 对话会话（唤醒后启动）
 # ──────────────────────────────────────────────
-async def start_conversation(kws_queue: asyncio.Queue):
+async def start_conversation():
     """
     Start a full-duplex conversation session with Omni Realtime API.
     Audio is sourced from AudioManager, responses played through speaker.
-    Session ends on hangup command or timeout.
+    Session ends on hangup command, timeout, or KWS wake word interrupt.
     """
-    global _conversation_active
+    global _conversation_active, _kws_interrupt_event
 
     async with _conversation_lock:
         if _conversation_active:
             print("[Conversation] Already active, skipping.")
             return
         _conversation_active = True
+        _kws_interrupt_event = asyncio.Event()
 
     loop = asyncio.get_running_loop()
     api_key = DASHSCOPE_API_KEY
@@ -558,9 +572,15 @@ async def start_conversation(kws_queue: asyncio.Queue):
 
         timeout_task = asyncio.create_task(check_timeout())
 
-        # Wait for session to end
+        # Wait for session to end (also check KWS wake word interrupt)
         while session_active:
             await asyncio.sleep(0.5)
+            # Check if KWS detected wake word during playback
+            if _kws_interrupt_event and _kws_interrupt_event.is_set():
+                print("[Conversation] KWS 唤醒词打断 → 停止播放，恢复对话")
+                _kws_interrupt_event.clear()
+                audio_manager.stop_playback()
+                last_interaction_time = time.time()  # reset timeout
 
         # Cleanup
         feed_task.cancel()
@@ -629,8 +649,8 @@ async def startup_event():
     # Start audio manager (system mic + speaker)
     await audio_manager.start()
 
-    # Subscribe KWS to audio stream and start background loop
-    kws_queue = audio_manager.subscribe()
+    # Subscribe KWS to audio stream (always_real: receives mic data even during AI playback)
+    kws_queue = audio_manager.subscribe(always_real=True)
     asyncio.create_task(kws_loop(kws_queue))
 
     print("=" * 50)

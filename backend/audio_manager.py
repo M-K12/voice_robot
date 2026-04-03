@@ -54,8 +54,11 @@ class AudioManager:
         self.input_blocksize = input_blocksize
         self.output_blocksize = output_blocksize
 
-        # Subscribers: each gets a copy of recorded audio frames
-        self._subscribers: list[asyncio.Queue] = []
+        # Subscribers split into two categories:
+        #   _always_real: always get real mic data (e.g. KWS wake word detection)
+        #   _half_duplex: get silence during playback (e.g. Omni conversation)
+        self._always_real: list[asyncio.Queue] = []
+        self._half_duplex: list[asyncio.Queue] = []
         self._loop: Optional[asyncio.AbstractEventLoop] = None
 
         # Playback
@@ -70,21 +73,31 @@ class AudioManager:
         self._output_stream: Optional[sd.OutputStream] = None
         self._running = False
 
-    def subscribe(self) -> asyncio.Queue:
+    def subscribe(self, always_real: bool = False) -> asyncio.Queue:
         """
-        Register a new audio consumer (e.g. KWS or Omni feeder).
-        Returns an asyncio.Queue that will receive PCM16 bytes chunks.
+        Register a new audio consumer.
+
+        Args:
+            always_real: If True, this subscriber always receives real mic data
+                        even during AI playback (for KWS wake word detection).
+                        If False, receives silence during playback (half-duplex).
         """
         q: asyncio.Queue = asyncio.Queue(maxsize=200)
-        self._subscribers.append(q)
+        if always_real:
+            self._always_real.append(q)
+        else:
+            self._half_duplex.append(q)
         return q
 
     def unsubscribe(self, q: asyncio.Queue) -> None:
-        """Remove a subscriber."""
+        """Remove a subscriber from either list."""
         try:
-            self._subscribers.remove(q)
+            self._half_duplex.remove(q)
         except ValueError:
-            pass
+            try:
+                self._always_real.remove(q)
+            except ValueError:
+                pass
 
     # ────────────────────────── Recording ──────────────────────────
 
@@ -98,33 +111,40 @@ class AudioManager:
         Called by sounddevice InputStream on each audio block.
         indata shape: (frames, channels), dtype int16.
 
-        Half-duplex: when AI is speaking, broadcast silence instead of mic data
-        to prevent echo from being fed back into KWS/Omni.
+        Half-duplex strategy:
+          - always_real subscribers (KWS): ALWAYS get real mic data
+          - half_duplex subscribers (Omni): get silence during playback
+        This allows KWS to detect wake words even while AI is speaking.
         """
         if status:
             print(f"[AudioManager] Input status: {status}")
 
-        if self._is_speaking:
-            # AI is speaking → send silence to prevent echo
-            pcm_bytes = b"\x00" * (frames * self.channels * 2)
-        else:
-            # Normal recording
-            pcm_bytes = indata.tobytes()
+        real_pcm = indata.tobytes()
+        silence_pcm = b"\x00" * (frames * self.channels * 2) if self._is_speaking else None
 
-        # Broadcast to all subscribers (non-blocking)
-        for q in self._subscribers:
+        # Always-real subscribers (KWS): always get real mic data
+        for q in self._always_real:
+            self._push_to_queue(q, real_pcm)
+
+        # Half-duplex subscribers (Omni): silence during playback
+        data = silence_pcm if silence_pcm else real_pcm
+        for q in self._half_duplex:
+            self._push_to_queue(q, data)
+
+    @staticmethod
+    def _push_to_queue(q: asyncio.Queue, data: bytes) -> None:
+        """Non-blocking push with drop-oldest on overflow."""
+        try:
+            q.put_nowait(data)
+        except asyncio.QueueFull:
             try:
-                q.put_nowait(pcm_bytes)
+                q.get_nowait()
+            except asyncio.QueueEmpty:
+                pass
+            try:
+                q.put_nowait(data)
             except asyncio.QueueFull:
-                # Drop oldest frame to prevent memory buildup
-                try:
-                    q.get_nowait()
-                except asyncio.QueueEmpty:
-                    pass
-                try:
-                    q.put_nowait(pcm_bytes)
-                except asyncio.QueueFull:
-                    pass
+                pass
 
     # ────────────────────────── Playback ──────────────────────────
 
@@ -251,7 +271,8 @@ class AudioManager:
                 pass
             self._output_stream = None
 
-        self._subscribers.clear()
+        self._always_real.clear()
+        self._half_duplex.clear()
         self.stop_playback()
         print("[AudioManager] Stopped.")
 

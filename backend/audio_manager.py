@@ -62,6 +62,9 @@ class AudioManager:
         self._playback_queue: queue.Queue[Optional[bytes]] = queue.Queue()
         self._playback_buffer = b""  # leftover bytes from previous chunk
 
+        # Half-duplex echo control
+        self._is_speaking = False  # True when outputting non-silence audio
+
         # Streams
         self._input_stream: Optional[sd.InputStream] = None
         self._output_stream: Optional[sd.OutputStream] = None
@@ -85,16 +88,28 @@ class AudioManager:
 
     # ────────────────────────── Recording ──────────────────────────
 
+    @property
+    def is_speaking(self) -> bool:
+        """Whether the system is currently playing back audio (half-duplex control)."""
+        return self._is_speaking
+
     def _input_callback(self, indata: np.ndarray, frames: int, time_info, status):
         """
         Called by sounddevice InputStream on each audio block.
         indata shape: (frames, channels), dtype int16.
+
+        Half-duplex: when AI is speaking, broadcast silence instead of mic data
+        to prevent echo from being fed back into KWS/Omni.
         """
         if status:
             print(f"[AudioManager] Input status: {status}")
 
-        # Convert to raw bytes
-        pcm_bytes = indata.tobytes()
+        if self._is_speaking:
+            # AI is speaking → send silence to prevent echo
+            pcm_bytes = b"\x00" * (frames * self.channels * 2)
+        else:
+            # Normal recording
+            pcm_bytes = indata.tobytes()
 
         # Broadcast to all subscribers (non-blocking)
         for q in self._subscribers:
@@ -125,25 +140,27 @@ class AudioManager:
 
         # Fill from leftover buffer first
         data = self._playback_buffer
+        has_real_audio = len(data) > 0  # track if we got real data
 
         while len(data) < needed_bytes:
             try:
                 chunk = self._playback_queue.get_nowait()
                 if chunk is None:
-                    # Sentinel: stop signal, fill rest with silence
                     break
+                has_real_audio = True
                 data += chunk
             except queue.Empty:
                 break
 
         if len(data) >= needed_bytes:
-            # We have enough data
             self._playback_buffer = data[needed_bytes:]
             audio_data = data[:needed_bytes]
         else:
-            # Not enough data, pad with silence
             self._playback_buffer = b""
             audio_data = data + b"\x00" * (needed_bytes - len(data))
+
+        # Half-duplex: update speaking state based on whether we have real audio
+        self._is_speaking = has_real_audio or len(self._playback_buffer) > 0
 
         outdata[:] = np.frombuffer(audio_data, dtype=np.int16).reshape(-1, self.channels)
 

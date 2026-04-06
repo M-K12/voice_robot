@@ -91,14 +91,15 @@ class OmniRealtimeClient:
         self.ws = await websockets.connect(
             url, 
             extra_headers=headers,
+            open_timeout=30,   # 增加连接超时到30秒
             ping_interval=20,  # 每20秒发送一次ping
-            ping_timeout=10,   # ping超时时间10秒
+            ping_timeout=20,   # ping超时时间20秒
             close_timeout=10   # 关闭超时时间10秒
         )
 
         # 设置默认会话配置
         payload = {
-            "modalities": ["text", "audio"],
+            "modalities": ["text"],
             "input_audio_format": "pcm16",
             "output_audio_format": "pcm16"
         }
@@ -111,9 +112,11 @@ class OmniRealtimeClient:
         elif self.turn_detection_mode == TurnDetectionMode.SERVER_VAD:
             payload["turn_detection"] = {
                 "type": "server_vad",
-                "threshold": 0.8,
+                "threshold": 0.92,          # 提高 VAD 触发阈值，加强环境噪音过滤
                 "prefix_padding_ms": 500,
-                "silence_duration_ms": 1500
+                "silence_duration_ms": 1500,
+                "create_response": False,    # 禁止 Omni 自动生成回复，只做 STT 转录
+                "interrupt_response": False  # 无回复可打断，同步关闭
             }
             await self.update_session(payload)
         else:

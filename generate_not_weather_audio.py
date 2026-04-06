@@ -65,5 +65,6 @@ def generate_audio(text, output_path):
         print(f"Saved: {output_path}")
 
 if __name__ == "__main__":
-    out = "backend/static/audio/weather_filler.wav"
-    generate_audio("好的，我马上去查一下，稍微等等哦。", out)
+  
+    out = "backend/static/audio/not_weather.wav"
+    generate_audio("我只是一个天气助手，只能回答天气相关的问题哦", out)

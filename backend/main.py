@@ -36,6 +36,7 @@ from datetime import datetime
 from dotenv import load_dotenv
 load_dotenv()
 
+import threading
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
@@ -124,12 +125,16 @@ app.include_router(weather_router)
 DEFAULT_CITY = "北京"
 DASHSCOPE_API_KEY = os.getenv("DASHSCOPE_API_KEY", "")
 QWEN_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+LOGIC_MODEL = "qwen-plus"  # 推荐使用 plus，速度更快且足智多谋
 
 # Global instances
 audio_manager = AudioManager()
 
 # Conversation state
-_conversation_active = False
+_conversation_active = False # 控制语音会话生命周期
+_last_ai_summary = ""          # 记录机器人上一次播报的文本，用于消除回波干扰
+_current_session_id = None
+_last_interaction_time = 0     # 用于超时挂断逻辑
 _conversation_lock = asyncio.Lock()
 
 # ──────────────────────────────────────────────
@@ -160,12 +165,20 @@ async def update_default_city():
                     DEFAULT_CITY = city
     except Exception: pass
 
-_WEATHER_FILLER_PATH = Path("backend/static/audio/weather_filler.wav")
-_filler_audio_cache = None
+def clean_echo_text(text: str) -> str:
+    """简单回波消除工具"""
+    if _last_ai_summary and len(text) > 5:
+        # 检查输入是否包含上一轮回答的片段
+        if _last_ai_summary in text:
+            return text.replace(_last_ai_summary, "").strip()
+        # 检查末尾重叠
+        for i in range(min(len(text), 15), 2, -1):
+            if _last_ai_summary.endswith(text[:i]):
+                return text[i:].strip()
+    return text
 
-_WEATHER_RE = re.compile(r'天气|气温|温度|下雨|下雪|预报|穿衣|降水|风力|冷不冷|热不热|爬山|打球|徒步|露营|出差|出门|室外|户外|防晒|带伞|游泳|下水|玩水|洗车|晾晒')
-_CITY_RE = re.compile(r'([^\s，,。！？]{2,6}?)[行]?(?:天气|气温|温度|下雨|下雪|预报|穿衣|降水|风力|冷不冷|热不热|爬山|打球|徒步|露营|出差|室外|户外|游泳|下水|玩水|洗车|晾晒)')
-_HANGUP_RE = re.compile(r'^(退出|退下|结束|挂断|再见|拜拜|退朝).*', re.IGNORECASE)
+_WOZAI_AUDIO_PATH = Path("backend/static/audio/wozai.wav")
+_wozai_audio_cache = None
 
 async def _run_weather_script(city: str) -> str:
     if not weather_client: return json.dumps({"error": "Weather client not available"})
@@ -205,150 +218,208 @@ def get_city_lonlat(city: str) -> Optional[list[float]]:
     if lat is not None and lon is not None: return [lon, lat]
     return None
 
-async def _extract_city_llm(text: str) -> str:
-    api_key = DASHSCOPE_API_KEY
-    if not api_key: return "NONE"
-    try:
-        async with httpx.AsyncClient() as client:
-            resp = await client.post(f"{QWEN_BASE_URL}/chat/completions",
-                headers={"Authorization": f"Bearer {api_key}"},
-                json={"model": "qwen-turbo",
-                      "messages": [{"role": "system", "content": "提取地市名，只输出名称，无则显NONE。"},
-                                   {"role": "user", "content": text}],
-                      "temperature": 0.1},
-                timeout=2.0)
-            return resp.json()["choices"][0]["message"]["content"].strip()
-    except:
-        return "NONE"
-
 # ──────────────────────────────────────────────
 # TTS 播报（通过 AudioManager 扬声器播放）
 # ──────────────────────────────────────────────
-def _speak_text_to_speaker(text: str, api_key: str = ""):
-    """使用 Qwen TTS 合成语音并通过系统扬声器播放"""
-    import threading
+_active_tts_stop_event: Optional[threading.Event] = None
+_tts_lock = threading.Lock()
+
+def _speak_text_to_speaker(text: str | queue.Queue, api_key: str = ""):
+    global _active_tts_stop_event
+    
+    this_stop_event = threading.Event()
+    
+    with _tts_lock:
+        if _active_tts_stop_event:
+            _active_tts_stop_event.set()
+        _active_tts_stop_event = this_stop_event
+
     def _run_tts():
         try:
             import dashscope
             done_event = threading.Event()
             class _TTSCallback(QwenTtsRealtimeCallback):
-                def on_open(self): print("[TTS] Connected.")
+                def on_open(self): print("  \033[94m[TTS] 已连接至阿里语音合成服务。\033[0m")
                 def on_close(self, code, msg): done_event.set()
                 def on_event(self, event):
                     if not isinstance(event, dict): return
+                    if this_stop_event.is_set(): return
+                        
                     if event.get('type') == 'response.audio.delta':
                         delta = event.get('delta')
                         if delta:
                             audio_manager.play_audio(base64.b64decode(delta))
                     elif event.get('type') == 'response.done':
                         done_event.set()
+                def on_error(self, msg):
+                    print(f"  \033[91m[TTS] SSE 错误: {msg}\033[0m")
+                    done_event.set()
 
             dashscope.api_key = api_key if api_key else os.getenv("DASHSCOPE_API_KEY", "")
             tts_client = QwenTtsRealtime(model='qwen3-tts-flash-realtime', callback=_TTSCallback())
             tts_client.connect()
             tts_client.update_session(voice="Cherry")
+            
             if isinstance(text, str):
                 cleaned = re.sub(r'\s+', '', text)
-                if cleaned: tts_client.append_text(cleaned)
+                if cleaned and not this_stop_event.is_set(): 
+                    tts_client.append_text(cleaned)
             else:
-                while True:
-                    chunk = text.get()
+                while not this_stop_event.is_set():
+                    try:
+                        chunk = text.get(timeout=0.05)
+                    except queue.Empty:
+                        continue
+                        
                     if chunk is None: break
                     cleaned = re.sub(r'\s+', '', chunk)
                     if cleaned: tts_client.append_text(cleaned)
+            
+            if this_stop_event.is_set():
+                try: tts_client.close()
+                except Exception: pass
+                return
+
             tts_client.finish()
             done_event.wait(timeout=30.0)
+            
             try: tts_client.close()
             except Exception: pass
         except Exception as e:
-            print(f"[TTS] Error: {e}")
+            print(f"  \033[91m[TTS] 运行时错误: {e}\033[0m")
     threading.Thread(target=_run_tts, daemon=True).start()
 
 # ──────────────────────────────────────────────
 # 天气处理（后端内部调用，结果通过 SSE 推送）
 # ──────────────────────────────────────────────
-async def _handle_weather_query(transcript: str):
-    """处理天气相关查询：提取城市 → 查天气 → SSE推送数据 → TTS播报"""
+async def _handle_weather_query(transcript: str, history: list = None):
     try:
-        # 提取城市
-        city = await _extract_city_llm(transcript)
-        if city == "NONE":
-            m = _CITY_RE.search(transcript)
-            city = m.group(1) if m else DEFAULT_CITY
-
-        # 查询天气
-        raw = await _run_weather_script(city)
-        print(f"\n[Weather] 天气结果 ({city}):\n{raw}\n")
-
-        if raw.startswith('{"error"'):
-            organized, weather_data = "天气查询失败", None
-        else:
-            organized, weather_data = raw, _parse_weather_text(raw, city)
-
-        # SSE 推送天气数据给前端
-        if weather_data:
-            await sse_hub.broadcast("weather_data", {"city": city, "data": weather_data})
-
-        # SSE 推送地理坐标
-        lonlat = get_city_lonlat(city)
+        print(f"  \033[94m[TEXT LLM] 开始处理请求: {transcript}\033[0m")
+        
+        city_match = re.search(r'([^\s，,。！？]{2,6}?)(?:天气|气温|温度|下雨|下雪)', transcript)
+        potential_city = city_match.group(1) if city_match else DEFAULT_CITY
+        lonlat = get_city_lonlat(potential_city)
         if lonlat:
-            await sse_hub.broadcast("query_info", {"lonLat": lonlat, "city": city})
+            await sse_hub.broadcast("query_info", {"lonLat": lonlat, "address": potential_city})
 
-        # 播放天气填充音
-        global _filler_audio_cache
-        if not _filler_audio_cache and _WEATHER_FILLER_PATH.exists():
-            with open(_WEATHER_FILLER_PATH, "rb") as f:
-                _filler_audio_cache = f.read()[44:]  # skip WAV header
-        if _filler_audio_cache:
-            audio_manager.play_audio(_filler_audio_cache)
-
-        # TTS 播报天气总结
         tts_queue = queue.Queue()
-        _speak_text_to_speaker(tts_queue, DASHSCOPE_API_KEY)
+        summary_chunks = []
+        
+        def _tts_wrapper(q):
+            _speak_text_to_speaker(q, DASHSCOPE_API_KEY)
+        
+        _tts_wrapper(tts_queue)
 
-        # 流式获取总结文本并同时喂给 TTS
-        try:
-            async with httpx.AsyncClient() as client:
-                async with client.stream("POST", f"{QWEN_BASE_URL}/chat/completions",
-                    headers={"Authorization": f"Bearer {DASHSCOPE_API_KEY}"},
-                    json={"model": "qwen-turbo",
-                          "messages": [{"role": "system", "content": f"专业天气助手，总结{city}气象建议，纯文本3句内。"},
-                                       {"role": "user", "content": f"用户问：{transcript}\n数据：{organized}"}],
-                          "stream": True, "temperature": 0.5},
-                    timeout=10.0) as resp:
-                    full = ""
-                    async for line in resp.aiter_lines():
-                        if line.startswith("data: "):
-                            if "[DONE]" in line: break
-                            try:
-                                delta = json.loads(line[6:])["choices"][0]["delta"].get("content", "")
-                                if delta:
-                                    full += delta
-                                    tts_queue.put(delta)
-                            except: pass
-                    tts_queue.put(None)  # Signal TTS done
-                    if full:
-                        await sse_hub.broadcast("output_transcript", {"text": full, "response_id": f"weather_{int(time.time())}"})
-        except:
-            tts_queue.put(None)
+        tools = [{
+            "type": "function",
+            "function": {
+                "name": "get_weather",
+                "description": "获取指定城市的天气信息",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "city": {"type": "string", "description": "城市名称，如北京、上海"}
+                    },
+                    "required": ["city"]
+                }
+            }
+        }]
+
+        anti_echo_prompt = (
+            "【重要指令】你是一个语音助手的核心大脑。用户输入中可能包含你上一轮回答的回波转写。"
+            "如果输入内容的前半部分看起来是你刚说过的陈述句，请直接忽略，仅针对末尾最新的城市提问、新指令或补全信息进行回应。"
+            "严禁重复回答已经回答过的内容。"
+        )
+
+        messages = [
+            {"role": "system", "content": f"你是一个专业的智能语音助手。{anti_echo_prompt} 总结气象建议，纯文本3句内。负温度必须说'零下X度'。当前默认城市：{DEFAULT_CITY}"}
+        ]
+        if history:
+            messages.extend(history[-6:])
+        messages.append({"role": "user", "content": transcript})
+
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                f"{QWEN_BASE_URL}/chat/completions",
+                headers={"Authorization": f"Bearer {DASHSCOPE_API_KEY}"},
+                json={
+                    "model": LOGIC_MODEL,
+                    "messages": messages,
+                    "tools": tools,
+                    "tool_choice": "auto"
+                },
+                timeout=10.0
+            )
+            resp_json = response.json()
+            if "choices" not in resp_json:
+                tts_queue.put(None)
+                return None
+
+            message = resp_json["choices"][0]["message"]
+
+            if "tool_calls" in message:
+                for tool_call in message["tool_calls"]:
+                    if tool_call["function"]["name"] == "get_weather":
+                        args = json.loads(tool_call["function"]["arguments"])
+                        city = args.get("city", potential_city)
+                        weather_raw = await _run_weather_script(city)
+                        weather_data = _parse_weather_text(weather_raw, city)
+                        
+                        if weather_data:
+                            await sse_hub.broadcast("weather_data", {"city": city, "data": weather_data})
+                        
+                        messages.append(message)
+                        messages.append({
+                            "role": "tool",
+                            "content": weather_raw,
+                            "tool_call_id": tool_call["id"]
+                        })
+
+            async with client.stream(
+                "POST", f"{QWEN_BASE_URL}/chat/completions",
+                headers={"Authorization": f"Bearer {DASHSCOPE_API_KEY}"},
+                json={
+                    "model": LOGIC_MODEL,
+                    "messages": messages,
+                    "stream": True,
+                    "temperature": 0.5
+                },
+                timeout=15.0
+            ) as resp:
+                full_content = ""
+                async for line in resp.aiter_lines():
+                    if line.startswith("data: "):
+                        if "[DONE]" in line: break
+                        try:
+                            delta = json.loads(line[6:])["choices"][0]["delta"].get("content", "")
+                            if delta:
+                                full_content += delta
+                                summary_chunks.append(delta)
+                                tts_delta = re.sub(r'(?<![\d])-([\d]+\.?[\d]*)', r'零下\1', delta)
+                                tts_queue.put(tts_delta)
+                        except: pass
+                
+                # 播报结束后，保存汇总摘要用于下一轮去噪
+                if summary_chunks:
+                    global _last_ai_summary
+                    _last_ai_summary = "".join(summary_chunks)
+                    # print(f"  \033[90m[Anti-Echo] 已存储上轮摘要: {_last_ai_summary[:20]}...\033[0m")
+
+                tts_queue.put(None)
+                
+                if full_content:
+                    await sse_hub.broadcast("output_transcript", {"text": full_content, "response_id": f"max_{int(time.time())}"})
+                    return full_content
 
     except Exception as e:
-        print(f"[Weather] Error: {e}")
+        print(f"[_handle_weather_query] 错误: {e}")
         traceback.print_exc()
+        if 'tts_queue' in locals(): tts_queue.put(None)
+    return None
 
-# Conversation interrupt event: set by KWS when wake word detected during active conversation
 _kws_interrupt_event: Optional[asyncio.Event] = None
 
 async def kws_loop(kws_queue: asyncio.Queue):
-    """
-    Continuously reads PCM from AudioManager and feeds to Sherpa-ONNX KWS.
-    KWS always receives real mic data (always_real=True), so it can detect
-    wake words even while AI is speaking through the speaker.
-
-    On keyword detection:
-      - If no conversation active: start new conversation
-      - If conversation active: interrupt current playback (wake word interrupt)
-    """
     global _kws_interrupt_event
 
     if not KWS_SPOTTER:
@@ -359,11 +430,17 @@ async def kws_loop(kws_queue: asyncio.Queue):
     print("[KWS] 唤醒监听已启动，等待唤醒词...")
     await sse_hub.broadcast("state_change", {"state": "idle"})
 
+    async def _run_conversation():
+        """Wrapper to run conversation and broadcast state when done."""
+        try:
+            await start_conversation()
+        finally:
+            print("[KWS] 对话结束，恢复唤醒监听。")
+            await sse_hub.broadcast("state_change", {"state": "idle"})
+
     while True:
         try:
             pcm_bytes = await kws_queue.get()
-
-            # Convert to float32 for Sherpa-ONNX
             samples = np.frombuffer(pcm_bytes, dtype=np.int16).astype(np.float32) / 32768.0
             stream.accept_waveform(16000, samples)
 
@@ -374,48 +451,42 @@ async def kws_loop(kws_queue: asyncio.Queue):
             if result:
                 text = getattr(result, 'keyword', str(result))
                 if text.strip():
-                    print(f"[{datetime.now().strftime('%H:%M:%S')}] [KWS] 检测到唤醒词: {text}")
+                    print(f"\n\033[92m✨ [WAKE] 检测到唤醒词: {text.strip()} ({datetime.now().strftime('%H:%M:%S')})\033[0m")
                     KWS_SPOTTER.reset_stream(stream)
 
+                    global _wozai_audio_cache
+                    if not _wozai_audio_cache and _WOZAI_AUDIO_PATH.exists():
+                        with open(_WOZAI_AUDIO_PATH, "rb") as _f:
+                            _wozai_audio_cache = _f.read()[44:]
+
                     if _conversation_active:
-                        # Conversation is active: interrupt playback
-                        print("[KWS] 对话中检测到唤醒词 → 打断 AI 播放")
+                        print(f"\033[93m⚡ [INTERRUPT] 对话中再次唤醒 -> 打断 AI 播放\033[0m")
+                        global _active_tts_stop_event
+                        if _active_tts_stop_event:
+                            _active_tts_stop_event.set()
                         audio_manager.stop_playback()
+                        if _wozai_audio_cache:
+                            audio_manager.play_audio(_wozai_audio_cache)
                         if _kws_interrupt_event:
                             _kws_interrupt_event.set()
-                        await sse_hub.broadcast("interrupt", {})
                     else:
-                        # No conversation: start new one
+                        print(f"\033[96m🚀 [SESSION] 启动新对话会话\033[0m")
                         await sse_hub.broadcast("wake", {})
                         await sse_hub.broadcast("state_change", {"state": "listening"})
-                        await start_conversation()
-
-                        # After conversation ends, reset and resume
-                        stream = KWS_SPOTTER.create_stream()
-                        print("[KWS] 对话结束，恢复唤醒监听。")
-                        await sse_hub.broadcast("state_change", {"state": "idle"})
+                        if _wozai_audio_cache:
+                            audio_manager.play_audio(_wozai_audio_cache)
+                        asyncio.create_task(_run_conversation())
 
         except asyncio.CancelledError:
             break
         except Exception as e:
-            print(f"[KWS] Error: {e}")
-            traceback.print_exc()
             await asyncio.sleep(1)
 
-# ──────────────────────────────────────────────
-# 对话会话（唤醒后启动）
-# ──────────────────────────────────────────────
 async def start_conversation():
-    """
-    Start a full-duplex conversation session with Omni Realtime API.
-    Audio is sourced from AudioManager, responses played through speaker.
-    Session ends on hangup command, timeout, or KWS wake word interrupt.
-    """
     global _conversation_active, _kws_interrupt_event
 
     async with _conversation_lock:
         if _conversation_active:
-            print("[Conversation] Already active, skipping.")
             return
         _conversation_active = True
         _kws_interrupt_event = asyncio.Event()
@@ -426,118 +497,149 @@ async def start_conversation():
 
     last_interaction_time = time.time()
     session_active = True
-    handling_weather = False
-    weather_triggered = False
+    handling_weather = False   # 重入防护：防止并发触发多个天气查询
     input_transcript_stream = ""
+    tag_parsed = False
+    current_intent = None
     client_ref = [None]
-
-    tools = [{
-        "type": "function", "name": "get_weather",
-        "parameters": {"type": "object", "properties": {"city": {"type": "string"}}}
-    }]
-
-    # ── Callbacks ──
-
-    async def on_audio(audio_data: bytes):
+    session_history = []
+    
+    def stop_for_interruption(intent=None):
         nonlocal last_interaction_time
-        if not session_active or handling_weather:
-            return
-        last_interaction_time = time.time()
-        b = base64.b64decode(audio_data) if isinstance(audio_data, str) else audio_data
-        audio_manager.play_audio(b)
+        if intent == "IGNORE":
+            return False
+            
+        if audio_manager.is_running:
+            print(f"\033[93m[Semantic Interrupt] 意图={intent} -> 停止当前 TTS 播报\033[0m")
+            if _active_tts_stop_event:
+                _active_tts_stop_event.set()
+            audio_manager.stop_playback()
+            last_interaction_time = time.time()
+            return True
+        return False
+
+    def on_text_delta(delta: str):
+        nonlocal input_transcript_stream, tag_parsed, current_intent
+        input_transcript_stream += delta
+        
+        if not tag_parsed and "]" in input_transcript_stream:
+            match = re.search(r'\[(WEATHER|EXIT|IGNORE|OTHER)\]', input_transcript_stream)
+            if match:
+                current_intent = match.group(1)
+                tag_parsed = True
+                print(f"\033[95m[Router] 流式识别到意图: {current_intent}\033[0m")
+                if current_intent != "IGNORE":
+                    stop_for_interruption(current_intent)
+
+    def on_response_done(response):
+        """模型输出完成：从 input_transcript_stream 读取已解析的意图并分发。"""
+        nonlocal current_intent, input_transcript_stream, tag_parsed, last_interaction_time, handling_weather, session_active
+        global _last_ai_summary
+
+        # 使用 on_text_delta 已经流式累积的文本（包含标签）
+        full_text = input_transcript_stream.strip()
+
+        # 如果流式解析没捕到标签，从完整文本再找一次
+        if current_intent is None and full_text:
+            match = re.search(r'\[(WEATHER|EXIT|IGNORE|OTHER)\]', full_text)
+            if match:
+                current_intent = match.group(1)
+
+        # 去掉标签，得到干净的用户请求文本
+        intent_text = re.sub(r'\[.*?\]', '', full_text).strip()
+
+        print(f"\033[94m[Final Router] Intent: {current_intent}, Text: {intent_text}\033[0m")
+
+        if current_intent == "EXIT":
+            print("\033[91m[Router] 收到退出指令，挂断会话。\033[0m")
+            session_active = False
+            asyncio.run_coroutine_threadsafe(sse_hub.broadcast("hangup", {}), loop)
+
+        elif current_intent == "IGNORE":
+            # 噪音/语气词：不打断、不刷新超时，静默忽略
+            print("\033[90m[Router] 意图为 IGNORE，跳过处理。\033[0m")
+
+        elif intent_text and current_intent in ("WEATHER", "OTHER"):
+            if handling_weather:
+                print("\033[90m[Router] 上一个查询仍在进行，跳过重入。\033[0m")
+            else:
+                last_interaction_time = time.time()
+                handling_weather = True
+                asyncio.run_coroutine_threadsafe(_run_intent_handler(intent_text), loop)
+
+        # 重置本轮解析状态
+        current_intent = None
+        input_transcript_stream = ""
+        tag_parsed = False
 
     async def on_interrupt():
-        nonlocal last_interaction_time
-        last_interaction_time = time.time()
-        audio_manager.stop_playback()
-        await sse_hub.broadcast("interrupt", {})
-
-    def on_input_transcript_delta(event: dict):
-        nonlocal weather_triggered, input_transcript_stream
-        if weather_triggered or handling_weather: return
-        delta = event.get("delta", "")
-        input_transcript_stream += delta
-        if _WEATHER_RE.search(input_transcript_stream):
-            weather_triggered = True
-            asyncio.run_coroutine_threadsafe(_run_fallback_weather(input_transcript_stream), loop)
+        """VAD 检测到声音：仅记录日志，不做任何打断。打断由语义标签驱动。"""
+        print(f"\033[90m[VAD] 检测到声音输入，等待语义确认...\033[0m")
 
     def on_input_transcript(transcript: str, is_text: bool = False, no_audio: bool = False):
-        nonlocal last_interaction_time, weather_triggered, input_transcript_stream, session_active
+        """这是语音转写 (STT) 回调，仅用于前端气泡显示。不再刷新倒计时标签。"""
+        if not transcript.strip(): return
         
-        final_text = transcript if transcript.strip() else input_transcript_stream
-        last_interaction_time = time.time()
-        input_transcript_stream = ""
+        print(f"\033[94m[STT] User: {transcript}\033[0m")
+        # 将用户的原始语音文字显示在气泡中（仅作为视觉反馈）
+        asyncio.run_coroutine_threadsafe(sse_hub.broadcast("input_transcript", {"text": transcript}), loop)
 
-        if not final_text.strip():
-            if client_ref[0]:
-                asyncio.run_coroutine_threadsafe(client_ref[0].send_event({"type": "response.cancel"}), loop)
-            return
-
-        if handling_weather and not _HANGUP_RE.search(final_text):
-            return
-
-        # SSE push user transcript
-        asyncio.run_coroutine_threadsafe(
-            sse_hub.broadcast("input_transcript", {"text": final_text}), loop
-        )
-
-        if _WEATHER_RE.search(final_text) or _HANGUP_RE.search(final_text):
-            if client_ref[0]:
-                asyncio.run_coroutine_threadsafe(client_ref[0].send_event({"type": "response.cancel"}), loop)
-
-            if _HANGUP_RE.search(final_text):
-                asyncio.run_coroutine_threadsafe(sse_hub.broadcast("hangup", {}), loop)
-                session_active = False
-            elif not weather_triggered:
-                asyncio.run_coroutine_threadsafe(_run_fallback_weather(final_text), loop)
-
-            weather_triggered = False
-
-    def on_output_transcript(transcript: str, response_id: str = ""):
-        if not handling_weather and _WEATHER_RE.search(transcript):
-            on_input_transcript(transcript)
-            return
-        asyncio.run_coroutine_threadsafe(
-            sse_hub.broadcast("output_transcript", {"text": transcript, "response_id": response_id}), loop
-        )
-
-    async def _run_fallback_weather(transcript):
-        nonlocal handling_weather
-        if handling_weather: return
-        handling_weather = True
+    async def _run_intent_handler(transcript):
+        """处理天气/OTHER 逻辑，transcript 已由 Omni 归一化。"""
+        nonlocal handling_weather, session_active, last_interaction_time
         try:
-            if client_ref[0]:
-                await client_ref[0].send_event({"type": "response.cancel"})
-            audio_manager.stop_playback()
-            await _handle_weather_query(transcript)
+            last_interaction_time = time.time()
+            await _handle_weather_query(transcript, session_history)
+            session_history.append({"role": "user", "content": transcript})
         except Exception as e:
-            print(f"[Weather] Fallback error: {e}")
+            print(f"[IntentHandler] Error: {e}")
         finally:
-            await asyncio.sleep(3)
             handling_weather = False
 
     # ── Start Omni session ──
     client = None
+    instructions = (
+        "你是一个实时的语音助理路由器，工作在全双工模式（扬声器和麦克风同时开启）。\n"
+        "【重要】：你可能会同时听到用户说话和扬声器播放的天气播报回声。\n"
+        "区分规则：\n"
+        "  - 【回声/陈述句】如：'成都明天小雨，气温20度，建议带雨伞。' → 判定为 [IGNORE]\n"
+        "  - 【用户提问】如：'成都明天冷不冷？' / '上海下雨吗？' → 判定为 [WEATHER]\n"
+        "  - 陈述句=回声，疑问句/祈使句=用户指令。这是最核心的判定规则。\n\n"
+        "你的唯一任务是：在输出流的最开始输出一个意图标签和归一化请求，格式为：[标签] 归一化请求。\n"
+        "标签分类：\n"
+        "- [WEATHER]：用户以疑问句询问天气（含城市、时间等气象要素）。\n"
+        "- [EXIT]：用户表示想结束对话、挂断、再见等。\n"
+        "- [IGNORE]：扬声器回声（陈述句天气播报）、噪音、语气词（嗯、好的、知道了）、或无意义的碎碎念。\n"
+        "- [OTHER]：其他非天气的有效提问或闲聊，需要生成响应的情况。\n\n"
+        "注意：除了标签和归一化请求，严禁输出任何额外字符、解释或标点符号。严禁生成语音回复。"
+    )
+    
     try:
         client = OmniRealtimeClient(
             base_url="wss://dashscope.aliyuncs.com/api-ws/v1/realtime",
             api_key=api_key,
             model="qwen3-omni-flash-realtime",
-            on_audio_delta=lambda d: asyncio.create_task(on_audio(d)),
             on_interrupt=lambda: asyncio.create_task(on_interrupt()),
             on_input_transcript=on_input_transcript,
-            on_output_transcript=on_output_transcript,
+            on_text_delta=on_text_delta,  # 新增实时文本回调
             turn_detection_mode=TurnDetectionMode.SERVER_VAD,
             extra_event_handlers={
-                "conversation.item.input_audio_transcription.delta": on_input_transcript_delta
+                "response.done": on_response_done, # 数据生成完毕后的总线入口
+                "conversation.item.input_audio_transcription.delta": lambda e: None
             }
         )
         client_ref[0] = client
         await client.connect()
         await client.update_session({
-            "tools": tools,
-            "enable_search": True,
-            "instructions": "精简专业助手。天气查询立即口头确认。禁Markdown，禁THINK。字数限100内。"
+            "modalities": ["text"],
+            "instructions": instructions,
+            "turn_detection": {
+                "type": "server_vad",
+                "threshold": 0.85,        # 全双工下回声可控，适当放宽灵敏度
+                "prefix_padding_ms": 300, # 从 500ms 压缩到 300ms
+                "silence_duration_ms": 700, # 从 1200ms 压缩到 700ms，节省约 500ms 延迟
+                "create_response": True
+            }
         })
 
         # Start message handler
@@ -561,11 +663,20 @@ async def start_conversation():
 
         # Timeout check
         async def check_timeout():
-            nonlocal session_active
+            nonlocal session_active, last_interaction_time
             while session_active:
                 await asyncio.sleep(1)
+                
+                # 若 AI 正在说话，一直重置倒计时
+                if audio_manager.is_running and getattr(audio_manager, 'is_speaking', False) or getattr(audio_manager, '_is_speaking', False):
+                    # 注意：AudioManager暴露了 is_running，但 _is_speaking被封装，如果需要可以用 _is_speaking
+                     pass
+                
+                if getattr(audio_manager, '_is_speaking', False):
+                    last_interaction_time = time.time()
+
                 if time.time() - last_interaction_time > 30:
-                    print("[Conversation] 30s timeout, hanging up.")
+                    print("\033[91m⌛ [TIMEOUT] 30秒无交互，自动挂断对话。\033[0m")
                     await sse_hub.broadcast("hangup", {})
                     session_active = False
                     break

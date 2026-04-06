@@ -67,6 +67,10 @@ class AudioManager:
 
         # Half-duplex echo control
         self._is_speaking = False  # True when outputting non-silence audio
+        # Cooldown: continue sending silence for a short period after playback ends
+        # to avoid Omni VAD interpreting the silence→real transition as speech
+        self._cooldown_remaining = 0
+        self._cooldown_blocks = max(1, int(0.5 * input_sample_rate / input_blocksize))  # ~500ms
 
         # Streams
         self._input_stream: Optional[sd.InputStream] = None
@@ -103,7 +107,7 @@ class AudioManager:
 
     @property
     def is_speaking(self) -> bool:
-        """Whether the system is currently playing back audio (half-duplex control)."""
+        """Whether the system is currently playing back audio."""
         return self._is_speaking
 
     def _input_callback(self, indata: np.ndarray, frames: int, time_info, status):
@@ -111,25 +115,24 @@ class AudioManager:
         Called by sounddevice InputStream on each audio block.
         indata shape: (frames, channels), dtype int16.
 
-        Half-duplex strategy:
-          - always_real subscribers (KWS): ALWAYS get real mic data
-          - half_duplex subscribers (Omni): get silence during playback
-        This allows KWS to detect wake words even while AI is speaking.
+        Option A (Full Duplex):
+          - Both subscribers get REAL microphone data even if AI is talking.
+          - This allows the model (Omni-Flash) to 'hear' the user during playback.
         """
         if status:
             print(f"[AudioManager] Input status: {status}")
 
         real_pcm = indata.tobytes()
-        silence_pcm = b"\x00" * (frames * self.channels * 2) if self._is_speaking else None
 
-        # Always-real subscribers (KWS): always get real mic data
+        # Update cooldown even if not used for silence (for state consistency)
+        if self._cooldown_remaining > 0:
+            self._cooldown_remaining -= 1
+
+        # Push to ALL subscribers (both types get real pcm now)
         for q in self._always_real:
             self._push_to_queue(q, real_pcm)
-
-        # Half-duplex subscribers (Omni): silence during playback
-        data = silence_pcm if silence_pcm else real_pcm
         for q in self._half_duplex:
-            self._push_to_queue(q, data)
+            self._push_to_queue(q, real_pcm)
 
     @staticmethod
     def _push_to_queue(q: asyncio.Queue, data: bytes) -> None:
@@ -179,8 +182,13 @@ class AudioManager:
             self._playback_buffer = b""
             audio_data = data + b"\x00" * (needed_bytes - len(data))
 
-        # Half-duplex: update speaking state based on whether we have real audio
+        # Half-duplex: update speaking state
+        was_speaking = self._is_speaking
         self._is_speaking = has_real_audio or len(self._playback_buffer) > 0
+
+        # Start cooldown when playback ends
+        if was_speaking and not self._is_speaking:
+            self._cooldown_remaining = self._cooldown_blocks
 
         outdata[:] = np.frombuffer(audio_data, dtype=np.int16).reshape(-1, self.channels)
 
@@ -193,10 +201,13 @@ class AudioManager:
             self._playback_queue.put(pcm_bytes)
 
     def stop_playback(self) -> None:
-        """
-        Flush the playback queue (used when AI is interrupted).
-        """
+        """Clear current playback queue and stop immediate output."""
+        if not self._running: return
+        print(f"  \033[90m[AudioManager] 物理打断：清空队列并重置输出...\033[0m")
         self._playback_buffer = b""
+        self._is_speaking = False # 立即标记为不在播报
+        
+        # 彻底清空队列
         while True:
             try:
                 self._playback_queue.get_nowait()

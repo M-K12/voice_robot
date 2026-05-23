@@ -15,8 +15,8 @@ if sys.platform == "win32":
 import sherpa_onnx
 import numpy as np
 
-cl_test_dir = Path(r"d:\projects\xiaoan\cl_test")
-model_dir = cl_test_dir / "models" / "sherpa-onnx-kws-zipformer-wenetspeech-3.3M-2024-01-01"
+sherpa_dir = Path(r"d:\projects\xiaoan\voice_robot\sherpa")
+model_dir = sherpa_dir / "models" / "sherpa-onnx-kws-zipformer-wenetspeech-3.3M-2024-01-01"
 
 spotter = sherpa_onnx.KeywordSpotter(
     tokens=str(model_dir / "tokens.txt"),

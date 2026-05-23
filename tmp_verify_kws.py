@@ -16,8 +16,8 @@ if sys.platform == "win32":
 import sherpa_onnx
 import numpy as np
 
-cl_test_dir = Path(r"d:\projects\xiaoan\cl_test")
-model_dir = cl_test_dir / "models" / "sherpa-onnx-kws-zipformer-wenetspeech-3.3M-2024-01-01"
+sherpa_dir = Path(r"d:\projects\xiaoan\sherpa")
+model_dir = sherpa_dir / "models" / "sherpa-onnx-kws-zipformer-wenetspeech-3.3M-2024-01-01"
 
 print(f"Initializing KeywordSpotter with models from {model_dir}")
 
@@ -29,7 +29,7 @@ try:
         joiner=str(model_dir / "joiner-epoch-12-avg-2-chunk-16-left-64.onnx"),
         num_threads=2,
         max_active_paths=4,
-        keywords_file=str(cl_test_dir / "models" / "keywords.txt"),
+        keywords_file=str(sherpa_dir / "models" / "keywords.txt"),
         keywords_score=1.0,
         keywords_threshold=0.25,
         num_trailing_blanks=1,

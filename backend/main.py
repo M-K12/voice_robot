@@ -83,9 +83,9 @@ def init_kws_spotter():
         return
 
     try:
-        base_dir = Path(__file__).resolve().parent.parent.parent
-        cl_test_dir = base_dir / "cl_test"
-        model_dir = cl_test_dir / "models" / "sherpa-onnx-kws-zipformer-wenetspeech-3.3M-2024-01-01"
+        base_dir = Path(__file__).resolve().parent.parent
+        sherpa_dir = base_dir / "sherpa"
+        model_dir = sherpa_dir / "models" / "sherpa-onnx-kws-zipformer-wenetspeech-3.3M-2024-01-01"
 
         if not model_dir.exists():
             return
@@ -497,7 +497,7 @@ async def start_conversation():
 
     last_interaction_time = time.time()
     session_active = True
-    handling_weather = False   # 重入防护：防止并发触发多个天气查询
+    _current_intent_task: Optional[asyncio.Task] = None  # 当前正在执行的意图任务
     input_transcript_stream = ""
     tag_parsed = False
     current_intent = None
@@ -533,7 +533,7 @@ async def start_conversation():
 
     def on_response_done(response):
         """模型输出完成：从 input_transcript_stream 读取已解析的意图并分发。"""
-        nonlocal current_intent, input_transcript_stream, tag_parsed, last_interaction_time, handling_weather, session_active
+        nonlocal current_intent, input_transcript_stream, tag_parsed, last_interaction_time, _current_intent_task, session_active
         global _last_ai_summary
 
         # 使用 on_text_delta 已经流式累积的文本（包含标签）
@@ -560,12 +560,14 @@ async def start_conversation():
             print("\033[90m[Router] 意图为 IGNORE，跳过处理。\033[0m")
 
         elif intent_text and current_intent in ("WEATHER", "OTHER"):
-            if handling_weather:
-                print("\033[90m[Router] 上一个查询仍在进行，跳过重入。\033[0m")
-            else:
-                last_interaction_time = time.time()
-                handling_weather = True
-                asyncio.run_coroutine_threadsafe(_run_intent_handler(intent_text), loop)
+            # 若上一个任务仍在运行，先取消它（中断 TTS + 网络请求）
+            if _current_intent_task and not _current_intent_task.done():
+                print("\033[93m[Router] 新请求到来，取消上一个未完成的查询。\033[0m")
+                _current_intent_task.cancel()
+            last_interaction_time = time.time()
+            _current_intent_task = asyncio.run_coroutine_threadsafe(
+                _run_intent_handler(intent_text), loop
+            )
 
         # 重置本轮解析状态
         current_intent = None
@@ -586,15 +588,19 @@ async def start_conversation():
 
     async def _run_intent_handler(transcript):
         """处理天气/OTHER 逻辑，transcript 已由 Omni 归一化。"""
-        nonlocal handling_weather, session_active, last_interaction_time
+        nonlocal session_active, last_interaction_time
         try:
             last_interaction_time = time.time()
             await _handle_weather_query(transcript, session_history)
             session_history.append({"role": "user", "content": transcript})
+        except asyncio.CancelledError:
+            print(f"\033[90m[IntentHandler] 查询已被新请求取消: {transcript[:15]}...\033[0m")
+            # 停止当前 TTS 播报，避免旧内容继续播放
+            if _active_tts_stop_event:
+                _active_tts_stop_event.set()
+            audio_manager.stop_playback()
         except Exception as e:
             print(f"[IntentHandler] Error: {e}")
-        finally:
-            handling_weather = False
 
     # ── Start Omni session ──
     client = None

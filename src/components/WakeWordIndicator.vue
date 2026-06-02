@@ -16,124 +16,127 @@
 
 <script setup>
 import { ref, watch, onUnmounted, onMounted } from 'vue'
+import { invoke as tauriInvoke } from '@tauri-apps/api/core'
+import { listen as tauriListen } from '@tauri-apps/api/event'
 
-// ... (props and state) ...
 const props = defineProps({
-  accessKey: { type: String, default: '' },
-  keywordPaths: { type: [String, Array], default: () => [] },
+  keyword: { type: String, default: '小安小安' },
   modelPath: { type: String, default: '' },
 })
 
-const emit = defineEmits(['wake', 'mic-error', 'mic-recovered'])
+const emit = defineEmits(['wake', 'mic-error', 'mic-recovered', 'debug'])
 
 const isListening = ref(false)
 const justDetected = ref(false)
 const micError = ref(false)
 let unlistenFn = null
 let unlistenMicError = null
+let unlistenMicRecovered = null
 let detectedTimer = null
 
-// Tauri API（懒加载）
-let tauriInvoke = null
-let tauriListen = null
+// 动态求值以兼容 Tauri v2 的异步注入
+function checkHasTauri() {
+  return typeof window !== 'undefined' && (!!window.__TAURI__ || !!window.__tauri_ipc__);
+}
 
-async function loadTauriApis() {
-  if (tauriInvoke) return true
-  try {
-    const { invoke } = await import('@tauri-apps/api/core')
-    const { listen } = await import('@tauri-apps/api/event')
-    tauriInvoke = invoke
-    tauriListen = listen
-    return true
-  } catch {
-    return false
+async function startListening() {
+  if (isListening.value) return;
+  
+  const isTauriEnv = checkHasTauri();
+  emit('debug', `[KWS] 准备启动监听，modelPath=${props.modelPath}，isTauriEnv=${isTauriEnv}`)
+  
+  if (!isTauriEnv) {
+    emit('debug', '[KWS] 启动被忽略：未检测到 Tauri 宿主环境（可能在纯浏览器中运行）。')
+    return;
   }
+  try {
+    if (!unlistenFn) {
+      unlistenFn = await tauriListen('wake-word-detected', (event) => {
+        emit('debug', `[KWS] 收到底层唤醒事件：payload=${event.payload}`)
+        justDetected.value = true
+        emit('wake', event.payload)
+        clearTimeout(detectedTimer)
+        detectedTimer = setTimeout(() => { justDetected.value = false }, 2500)
+      })
+    }
+
+    emit('debug', '[KWS] 正在调用 Rust start_wake_word...')
+    await tauriInvoke('start_wake_word', {
+      modelDir: props.modelPath,
+      keyword: props.keyword,
+    })
+    emit('debug', '[KWS] Rust start_wake_word 调用成功！已开始在后台采集并识别音频。')
+    isListening.value = true
+  } catch (e) {
+    emit('debug', `[KWS] 启动失败！Rust 抛出异常：${e}`)
+    if (unlistenFn) { unlistenFn(); unlistenFn = null }
+  }
+}
+
+async function stopListening() {
+  if (!isListening.value) return
+  emit('debug', '[KWS] 停止监听')
+  if (checkHasTauri()) {
+    try { 
+      await tauriInvoke('stop_wake_word')
+      emit('debug', '[KWS] Rust stop_wake_word 调用成功')
+    } catch (e) { 
+      emit('debug', `[KWS] Rust stop_wake_word 失败：${e}`) 
+    }
+  }
+  if (unlistenFn) { unlistenFn(); unlistenFn = null }
+  isListening.value = false
 }
 
 async function toggleWake() {
-  const hasTauri = await loadTauriApis()
-
   if (isListening.value) {
-    // 停止监听
-    if (hasTauri) {
-      try { await tauriInvoke('stop_wake_word') } catch (e) { console.error(e) }
-    }
-    if (unlistenFn) { unlistenFn(); unlistenFn = null }
-    isListening.value = false
-    return
-  }
-
-  // 启动监听
-  if (!hasTauri) {
-    console.warn('此功能需要在 Tauri 桌面应用中运行。')
-    return
-  }
-  if (!props.accessKey) {
-    console.warn('请先在设置中填写 Picovoice AccessKey。')
-    return
-  }
-
-  try {
-    // 订阅唤醒事件
-    unlistenFn = await tauriListen('wake-word-detected', (event) => {
-      justDetected.value = true
-      // event.payload 是触发的关键字索引
-      emit('wake', event.payload)
-      clearTimeout(detectedTimer)
-      detectedTimer = setTimeout(() => { justDetected.value = false }, 2500)
-    })
-
-    // 处理 keywordPaths，如果是逗号分隔的字符串则转换为数组
-    const paths = Array.isArray(props.keywordPaths)
-      ? props.keywordPaths
-      : props.keywordPaths.split(',').map(s => s.trim()).filter(s => s.length > 0)
-
-    await tauriInvoke('start_wake_word', {
-      accessKey: props.accessKey,
-      keywordPaths: paths,
-      modelPath: props.modelPath,
-    })
-    isListening.value = true
-  } catch (e) {
-    console.error('[wake_word]', e)
-    // 自动启动失败时不弹窗打扰
-    if (unlistenFn) { unlistenFn(); unlistenFn = null }
+    await stopListening()
+  } else {
+    await startListening()
   }
 }
 
+defineExpose({ startListening, stopListening })
+
 onMounted(async () => {
-  // 组件挂载后稍作延迟自动启动唤醒监听
-  setTimeout(() => {
+  emit('debug', '[KWS] 组件挂载，等待 1000ms 以确保 Tauri 运行环境注入完成...')
+  
+  // 稍作延迟注册事件与启动唤醒，防止在加载一瞬间由于时序问题导致 window.__tauri_ipc__ 还没来得及注入
+  setTimeout(async () => {
+    const isTauriEnv = checkHasTauri();
+    emit('debug', `[KWS] 延时检测宿主环境：isTauriEnv=${isTauriEnv}`)
+
+    if (isTauriEnv) {
+      try {
+        unlistenMicError = await tauriListen('microphone-error', (event) => {
+          emit('debug', `[KWS] 收到底层麦克风异常事件：${JSON.stringify(event.payload)}`)
+          micError.value = true
+          isListening.value = false
+          emit('mic-error', event.payload)
+        })
+        unlistenMicRecovered = await tauriListen('microphone-recovered', (event) => {
+          emit('debug', `[KWS] 收到底层麦克风已恢复事件：${JSON.stringify(event.payload)}`)
+          micError.value = false
+          isListening.value = true
+          emit('mic-recovered')
+        })
+        emit('debug', '[KWS] 成功挂载底层麦克风事件监听监听器')
+      } catch (e) {
+        emit('debug', `[KWS] 挂载底层麦克风监听器失败：${e}`)
+      }
+    }
+
     if (!isListening.value) {
-      toggleWake()
+      await startListening()
     }
   }, 1000)
-
-  // 监听麦克风错误事件
-  const hasTauri = await loadTauriApis()
-  if (hasTauri && tauriListen) {
-    unlistenMicError = await tauriListen('microphone-error', (event) => {
-      console.error('[WakeWordIndicator] 麦克风异常:', event.payload)
-      micError.value = true
-      isListening.value = false
-      emit('mic-error', event.payload)
-    })
-    unlistenMicRecovered = await tauriListen('microphone-recovered', (event) => {
-      console.log('[WakeWordIndicator] 麦克风已恢复:', event.payload)
-      micError.value = false
-      isListening.value = true
-      emit('mic-recovered')
-    })
-  }
 })
 
 function clearMicError() {
+  emit('debug', '[KWS] 尝试手动清理麦克风异常并重连')
   micError.value = false
-  // 尝试重新启动唤醒监听
   toggleWake()
 }
-
-let unlistenMicRecovered = null
 
 onUnmounted(() => {
   if (unlistenFn) unlistenFn()

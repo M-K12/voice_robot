@@ -117,18 +117,18 @@ class AudioManager:
 
         Option A (Full Duplex):
           - Both subscribers get REAL microphone data even if AI is talking.
-          - This allows the model (Omni-Flash) to 'hear' the user during playback.
+          - This allows the model (Omni-Flash) to 'hear' the user during playback to detect interrupts.
         """
         if status:
             print(f"[AudioManager] Input status: {status}")
 
         real_pcm = indata.tobytes()
 
-        # Update cooldown even if not used for silence (for state consistency)
+        # Update cooldown
         if self._cooldown_remaining > 0:
             self._cooldown_remaining -= 1
 
-        # Push to ALL subscribers (both types get real pcm now)
+        # Push to ALL subscribers (both types get real pcm now for Full Duplex)
         for q in self._always_real:
             self._push_to_queue(q, real_pcm)
         for q in self._half_duplex:

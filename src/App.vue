@@ -14,18 +14,22 @@
       </div>
       <div class="toolbar-actions">
         <WakeWordIndicator
-          :access-key="settings.picovoiceKey"
-          :keyword-paths="[settings.keywordPathStart, settings.keywordPathStop]"
-          :model-path="settings.modelPath"
+          ref="wakeIndicatorEl"
+          :keyword="settings.wakeWord"
+          :model-path="settings.modelDir"
           @wake="onWakeDetected"
           @mic-error="onMicError"
           @mic-recovered="onMicRecovered"
+          @debug="onKwsDebug"
         />
         <button class="icon-btn" :class="{active: isFullscreen}" @click="toggleFullscreen" title="全屏">
           <span>{{ isFullscreen ? '⛶' : '⛶' }}</span>
         </button>
         <button class="icon-btn" :class="{active: isOnTop}" @click="toggleOnTop" title="置顶">
           <span>📌</span>
+        </button>
+        <button class="icon-btn" :class="{active: showDebugPanel}" @click="showDebugPanel = !showDebugPanel" title="调试面板">
+          <span>🛠️</span>
         </button>
         <button class="icon-btn" @click="showSettings = true" title="设置">⚙️</button>
         <button class="btn-clear" @click="clearChat">🗑</button>
@@ -123,6 +127,54 @@
           <div class="input-hint">Enter 发送 · Shift+Enter 换行</div>
         </div>
       </section>
+
+      <!-- 右侧：全链路调试控制台 -->
+      <Transition name="slide-left">
+        <aside class="debug-panel" v-if="showDebugPanel">
+          <div class="debug-header">
+            <h3>🛠️ 全链路调试控制台</h3>
+            <button class="btn-clear-debug" @click="clearDebugLogs" title="清空日志">🗑️</button>
+          </div>
+          <div class="debug-content" ref="debugContentEl">
+            <div v-if="debugLogs.length === 0" class="debug-empty">
+              等待语音交互启动以捕获链路事件...
+            </div>
+            <div v-else class="debug-timeline">
+              <div 
+                v-for="(log, idx) in debugLogs" 
+                :key="idx" 
+                class="debug-item" 
+                :class="log.step"
+              >
+                <div class="debug-item-header" @click="toggleLogDetail(idx)">
+                  <span class="debug-tag">{{ getStepLabel(log.step) }}</span>
+                  <span class="debug-time">{{ formatTime(log.timestamp) }}</span>
+                  <span class="debug-toggle" v-if="hasDetail(log)">{{ log.collapsed ? '▶' : '▼' }}</span>
+                </div>
+                <div class="debug-item-body">
+                  <div v-if="log.step === 'stt'" class="debug-text-content">
+                    识别文本: "{{ log.content }}"
+                  </div>
+                  <div v-else-if="log.step === 'intent'" class="debug-text-content">
+                    {{ log.content }}
+                  </div>
+                  <div v-else-if="log.step === 'tts'" class="debug-text-content">
+                    语音回复: "{{ log.content }}"
+                  </div>
+                  <div v-else-if="log.step === 'tool_call'" class="debug-json-content" v-show="!log.collapsed">
+                    <div class="debug-meta">工具名: <code>{{ log.name }}</code></div>
+                    <pre><code>{{ formatJson(log.arguments) }}</code></pre>
+                  </div>
+                  <div v-else-if="log.step === 'tool_result'" class="debug-json-content" v-show="!log.collapsed">
+                    <div class="debug-meta">工具名: <code>{{ log.name }}</code></div>
+                    <pre><code>{{ formatJson(log.result) }}</code></pre>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </aside>
+      </Transition>
     </main>
 
     <!-- 设置弹窗 -->
@@ -134,33 +186,17 @@
             <label>DashScope API Key
               <input v-model="settings.dashscopeKey" type="password" placeholder="sk-..." />
             </label>
-            <label>Picovoice AccessKey
-              <input v-model="settings.picovoiceKey" type="password" placeholder="O8KPp..." />
-            </label>
-            
             <div class="field-row">
-              <label>开始唤醒词 (.ppn)
-                <div class="input-with-btn">
-                  <input v-model="settings.keywordPathStart" type="text" />
-                  <button @click.stop="pickFile('keywordPathStart', 'ppn')">📂</button>
-                </div>
+              <label>唤醒词
+                <input v-model="settings.wakeWord" type="text" placeholder="例如：小安小安" />
               </label>
             </div>
 
             <div class="field-row">
-              <label>结束唤醒词 (.ppn)
+              <label>ONNX 模型目录
                 <div class="input-with-btn">
-                  <input v-model="settings.keywordPathStop" type="text" placeholder="可选，留空则不启用" />
-                  <button @click.stop="pickFile('keywordPathStop', 'ppn')">📂</button>
-                </div>
-              </label>
-            </div>
-
-            <div class="field-row">
-              <label>全局模型文件 (.pv)
-                <div class="input-with-btn">
-                  <input v-model="settings.modelPath" type="text" />
-                  <button @click.stop="pickFile('modelPath', 'pv')">📂</button>
+                  <input v-model="settings.modelDir" type="text" placeholder="选择存放 ONNX 模型的文件夹" />
+                  <button @click.stop="pickDirectory('modelDir')">📂</button>
                 </div>
               </label>
             </div>
@@ -190,6 +226,26 @@ import { open } from '@tauri-apps/plugin-dialog'
 let tauriInvoke = null
 import('@tauri-apps/api/core').then(mod => {
   tauriInvoke = mod.invoke
+  
+  if (typeof window !== 'undefined' && (window.__TAURI__ || window.__tauri_ipc__)) {
+    const rawLog = window.console.log
+    const rawError = window.console.error
+    const rawWarn = window.console.warn
+
+    window.console.log = (...args) => {
+      rawLog(...args)
+      mod.invoke('frontend_log', { level: 'LOG', message: args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ') }).catch(() => {})
+    }
+    window.console.error = (...args) => {
+      rawError(...args)
+      mod.invoke('frontend_log', { level: 'ERROR', message: args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ') }).catch(() => {})
+    }
+    window.console.warn = (...args) => {
+      rawWarn(...args)
+      mod.invoke('frontend_log', { level: 'WARN', message: args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ') }).catch(() => {})
+    }
+    console.log('[Frontend] Console redirect initialized.');
+  }
 }).catch(() => {})
 
 // ── 响应式状态
@@ -199,6 +255,7 @@ const inputFocused = ref(false)
 const sending = ref(false)
 const messagesEl = ref(null)
 const inputEl = ref(null)
+const wakeIndicatorEl = ref(null)
 const weatherData = ref(null)
 const isFullscreen = ref(false)
 const isOnTop = ref(false)
@@ -209,17 +266,60 @@ const silenceTimer = ref(null) // 10秒静默挂断计时器
 const micErrorMsg = ref('')    // 麦克风异常提示
 const micDisabled = ref(false) // 麦克风不可用时置灰
 
+// ── 调试面板状态与辅助函数
+const showDebugPanel = ref(false)
+const debugLogs = ref([])
+const debugContentEl = ref(null)
+
+function clearDebugLogs() {
+  debugLogs.value = []
+}
+
+function toggleLogDetail(idx) {
+  debugLogs.value[idx].collapsed = !debugLogs.value[idx].collapsed
+}
+
+function hasDetail(log) {
+  return log.step === 'tool_call' || log.step === 'tool_result'
+}
+
+function getStepLabel(step) {
+  const map = {
+    kws: '✨ 唤醒监测',
+    stt: '🎙️ 语音转写',
+    intent: '🧠 意图决策',
+    tool_call: '⚙️ 工具调用',
+    tool_result: '📤 执行结果',
+    tts: '🔊 语音回复'
+  }
+  return map[step] || step
+}
+
+function formatTime(ts) {
+  const d = new Date(ts)
+  const pad = (n) => String(n).padStart(2, '0')
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
+}
+
+function formatJson(obj) {
+  if (typeof obj === 'string') {
+    try {
+      return JSON.stringify(JSON.parse(obj), null, 2)
+    } catch {
+      return obj
+    }
+  }
+  return JSON.stringify(obj, null, 2)
+}
+
 
 // ── 默认路径（Windows，基于项目结构）
-const defaultKwPath = String.raw`D:\Ming\voice_robot\porcupine\resources\keyword_files_zh\windows\你好_windows.ppn`
-const defaultModelPath = String.raw`D:\Ming\voice_robot\porcupine\lib\common\porcupine_params_zh.pv`
+const defaultModelDir = String.raw`D:\projects\xiaoan\voice_robot\sherpa\models\sherpa-onnx-kws-zipformer-wenetspeech-3.3M-2024-01-01`
 
 const settings = reactive({
   dashscopeKey: localStorage.getItem('dashscopeKey') || '',
-  picovoiceKey: localStorage.getItem('picovoiceKey') || 'O8KPpv2UQ9AP5nY7ACJ/ChQOQT8HfX+K80mECRx1SokHqSGwYB84Dg==',
-  keywordPathStart: localStorage.getItem('keywordPathStart') || defaultKwPath,
-  keywordPathStop: localStorage.getItem('keywordPathStop') || '',
-  modelPath: localStorage.getItem('modelPath') || defaultModelPath,
+  wakeWord: localStorage.getItem('wakeWord') || '小安小安',
+  modelDir: localStorage.getItem('modelDir') || defaultModelDir,
   backendUrl: localStorage.getItem('backendUrl') || 'http://127.0.0.1:8765',
 })
 
@@ -451,7 +551,7 @@ function stopAudioPlayback() {
 function startSilenceTimer() {
   stopSilenceTimer()
   silenceTimer.value = setTimeout(() => {
-    console.log('[SilenceDetector] 10秒无语音输入，准备挂断')
+    console.log('[SilenceDetector] 30秒无语音输入，准备挂断')
     // 先显示提示消息
     messages.value.push({ role: 'assistant', content: '如果没有其他问题，我先退下了。', isFinal: true })
     scrollToBottom()
@@ -459,7 +559,7 @@ function startSilenceTimer() {
     silenceTimer.value = setTimeout(() => {
       endVoiceCall()
     }, 2000)
-  }, 10000)
+  }, 30000)
 }
 
 function stopSilenceTimer() {
@@ -471,7 +571,11 @@ function stopSilenceTimer() {
 
 async function startVoiceCall() {
   inCall.value = true
+  debugLogs.value = [] // 开启新通话时，清空上一次的调试日志
   try {
+    if (wakeIndicatorEl.value) {
+      await wakeIndicatorEl.value.stopListening()
+    }
     // 强制枚举设备以刷新 Chrome 内部设备缓存（解决插拔后无法找到默认麦克风的问题）
     await navigator.mediaDevices.enumerateDevices().catch(() => {})
     // 获取麦克风
@@ -492,6 +596,19 @@ async function startVoiceCall() {
 
     voiceWs.onopen = () => {
       console.log('[voice_ws] 已连接')
+
+      // 唤醒或手动启动后自动切换到对话页面
+      if (messages.value.length === 0) {
+        messages.value.push({ 
+          role: 'assistant', 
+          content: '我在，请吩咐。', 
+          isFinal: true, 
+          isVoiceWs: true, 
+          timestamp: Date.now() 
+        })
+        scrollToBottom()
+      }
+
       // 开始录音推流
       audioCtx = new AudioContext({ sampleRate: 16000 })
       micSource = audioCtx.createMediaStreamSource(micStream)
@@ -532,6 +649,29 @@ async function startVoiceCall() {
         // 文本 JSON 消息
         try {
           const msg = JSON.parse(event.data)
+          if (msg.type === 'debug_event') {
+            const lastLog = debugLogs.value[debugLogs.value.length - 1]
+            if (lastLog && lastLog.step === msg.step && (msg.step === 'tts' || msg.step === 'stt')) {
+              lastLog.content = msg.content
+              lastLog.timestamp = Date.now()
+            } else {
+              debugLogs.value.push({
+                step: msg.step,
+                name: msg.name,
+                content: msg.content,
+                arguments: msg.arguments,
+                result: msg.result,
+                timestamp: Date.now(),
+                collapsed: false
+              })
+            }
+            nextTick(() => {
+              if (debugContentEl.value) {
+                debugContentEl.value.scrollTop = debugContentEl.value.scrollHeight
+              }
+            })
+            return // 拦截调试事件，不要向下执行
+          }
           if (msg.type === 'interrupt') {
             stopAudioPlayback()
           } else if (msg.type === 'input_transcript') {
@@ -567,8 +707,19 @@ async function startVoiceCall() {
             }
             scrollToBottom()
           } else if (msg.type === 'output_transcript') {
-            // AI 回复的完整文本
-            messages.value.push({ id: 'out-' + Date.now(), role: 'assistant', content: msg.data, isFinal: true })
+            // AI 回复的累加流式文本
+            let lastMsg = messages.value[messages.value.length - 1];
+            if (lastMsg && lastMsg.role === 'assistant' && lastMsg.isVoiceWs && !lastMsg.isWeather) {
+              lastMsg.content = msg.data;
+            } else {
+              messages.value.push({
+                id: 'out-' + Date.now(),
+                role: 'assistant',
+                content: msg.data,
+                isFinal: false,
+                isVoiceWs: true
+              });
+            }
             scrollToBottom()
             // AI 文字回复完成，如果语音还在播放，等播放完再启动计时器
             if (isPlaying) {
@@ -635,14 +786,50 @@ async function endVoiceCall() {
   
   // 停止静默计时器
   stopSilenceTimer()
+
+  // 延迟2.5秒自动清空消息历史以切回首页（留出时间供用户看清最终的问答气泡）
+  setTimeout(() => {
+    if (!inCall.value) {
+      clearChat()
+    }
+  }, 2500)
+
+  if (wakeIndicatorEl.value) {
+    wakeIndicatorEl.value.startListening()
+  }
 }
 
 // ── 唤醒词触发
-function onWakeDetected(index) {
-  console.log('[App] 唤醒词触发，索引：', index)
+function onKwsDebug(msg) {
+  console.log('[KWS Debug]', msg)
+  // 写入右侧全链路调试控制台，保持主对话区域的清爽与美观
+  debugLogs.value.push({ 
+    step: 'kws', 
+    content: msg, 
+    timestamp: Date.now(),
+    collapsed: true
+  })
+  nextTick(() => {
+    if (debugContentEl.value) {
+      debugContentEl.value.scrollTop = debugContentEl.value.scrollHeight
+    }
+  })
+}
+
+function onWakeDetected(payload) {
+  console.log('[App] 唤醒词触发，payload：', payload)
   
-  // 约定：索引 0 为启动，索引 1 为结束
-  if (index === 0) {
+  // 兼容逻辑：若 payload 是数字 0 或包含了唤醒词（如“小安”）或“启动”字样，视为开启通话
+  const isStart = payload === 0 || 
+                  (typeof payload === 'string' && 
+                   (payload.includes(settings.wakeWord) || payload.includes('小安') || payload.includes('启动')));
+                   
+  // 若 payload 是数字 1 或包含了“退下”等挂断词，视为结束通话
+  const isStop = payload === 1 || 
+                 (typeof payload === 'string' && 
+                  (payload.includes('退下') || payload.includes('挂断') || payload.includes('再见')));
+
+  if (isStart) {
     if (!inCall.value) {
       startVoiceCall()
       if (messages.value.length === 0) {
@@ -650,7 +837,7 @@ function onWakeDetected(index) {
         scrollToBottom()
       }
     }
-  } else if (index === 1) {
+  } else if (isStop) {
     if (inCall.value) {
       if (voiceWs && voiceWs.readyState === WebSocket.OPEN) {
         voiceWs.send(JSON.stringify({ type: 'query', text: '退下' }))
@@ -685,7 +872,7 @@ function onMicRecovered() {
 
 import { listen } from '@tauri-apps/api/event'
 onMounted(async () => {
-  if (window.__TAURI__) {
+  if (window.__TAURI__ || window.__tauri_ipc__) {
     await listen('livekit-text', (event) => {
       let payload = event.payload;
       if (typeof payload === 'string') {
@@ -751,6 +938,21 @@ async function pickFile(key, extension) {
     }
   } catch (e) {
     console.error('File picker error:', e)
+  }
+}
+
+// ── 文件夹选择
+async function pickDirectory(key) {
+  try {
+    const selected = await open({
+      multiple: false,
+      directory: true
+    })
+    if (selected) {
+      settings[key] = selected
+    }
+  } catch (e) {
+    console.error('Directory picker error:', e)
   }
 }
 
@@ -1090,5 +1292,196 @@ textarea::placeholder { color: var(--text-muted); }
   opacity: 0.35;
   cursor: not-allowed;
   pointer-events: none;
+}
+
+/* ── 调试侧边栏 */
+.debug-panel {
+  width: 380px;
+  background: rgba(10, 16, 28, 0.75);
+  backdrop-filter: blur(25px) saturate(1.5);
+  border-left: 1px solid rgba(99, 179, 237, 0.15);
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  flex-shrink: 0;
+  z-index: 5;
+  box-shadow: -10px 0 30px rgba(0, 0, 0, 0.5);
+}
+
+.debug-header {
+  padding: 16px 20px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.debug-header h3 {
+  font-family: var(--font-display);
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.btn-clear-debug {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 0.9rem;
+  transition: color var(--transition-fast);
+}
+
+.btn-clear-debug:hover {
+  color: #ff4d4f;
+}
+
+.debug-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.debug-empty {
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  text-align: center;
+  margin-top: 40px;
+  font-style: italic;
+}
+
+.debug-timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  position: relative;
+}
+
+.debug-timeline::before {
+  content: '';
+  position: absolute;
+  left: 14px;
+  top: 10px;
+  bottom: 10px;
+  width: 1px;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.debug-item {
+  position: relative;
+  padding-left: 32px;
+}
+
+.debug-item::before {
+  content: '';
+  position: absolute;
+  left: 10px;
+  top: 14px;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.2);
+  border: 2px solid rgba(10, 16, 28, 0.8);
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.05);
+  z-index: 1;
+}
+
+/* 步骤条不同状态的亮点边框与呼吸灯效果 */
+.debug-item.kws::before { background: #ec4899; box-shadow: 0 0 8px #ec4899; }
+.debug-item.stt::before { background: #3b82f6; box-shadow: 0 0 8px #3b82f6; }
+.debug-item.intent::before { background: #a855f7; box-shadow: 0 0 8px #a855f7; }
+.debug-item.tool_call::before { background: #eab308; box-shadow: 0 0 8px #eab308; }
+.debug-item.tool_result::before { background: #22c55e; box-shadow: 0 0 8px #22c55e; }
+.debug-item.tts::before { background: #06b6d4; box-shadow: 0 0 8px #06b6d4; }
+
+.debug-item-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  user-select: none;
+  margin-bottom: 6px;
+}
+
+.debug-tag {
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.kws .debug-tag { color: #f472b6; }
+.stt .debug-tag { color: #60a5fa; }
+.intent .debug-tag { color: #c084fc; }
+.tool_call .debug-tag { color: #facc15; }
+.tool_result .debug-tag { color: #4ade80; }
+.tts .debug-tag { color: #22d3ee; }
+
+.debug-time {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  margin-left: auto;
+  margin-right: 8px;
+}
+
+.debug-toggle {
+  font-size: 0.6rem;
+  color: var(--text-muted);
+}
+
+.debug-item-body {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.04);
+  border-radius: var(--radius-sm);
+  padding: 10px 14px;
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+
+.debug-text-content {
+  color: var(--text-secondary);
+}
+
+.debug-meta {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+
+.debug-meta code {
+  color: #facc15;
+  background: rgba(234, 179, 8, 0.1);
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-family: monospace;
+}
+
+.debug-json-content pre {
+  margin: 0;
+  padding: 8px;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 4px;
+  overflow-x: auto;
+  max-height: 250px;
+}
+
+.debug-json-content code {
+  font-family: Consolas, Monaco, 'Andale Mono', 'Ubuntu Mono', monospace;
+  color: #e2e8f0;
+  font-size: 0.75rem;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+/* 侧边栏过渡 */
+.slide-left-enter-active, .slide-left-leave-active {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.slide-left-enter-from, .slide-left-leave-to {
+  opacity: 0;
+  transform: translateX(30px);
 }
 </style>

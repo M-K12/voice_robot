@@ -350,7 +350,7 @@ const weatherRegex = /天气|气温|温度|多少度|多少℃|几度|冷不冷|
 
 async function fetchWeather(city) {
   try {
-    const res = await fetch(`${settings.backendUrl}/weather?city=${encodeURIComponent(city)}`)
+    const res = await fetch(settings.backendUrl + "/weather?city=" + encodeURIComponent(city))
     if (res.ok) {
         const data = await res.json()
         weatherData.value = data
@@ -374,7 +374,6 @@ function extractCity(text) {
   return null
 }
 
-// ── 发送消息
 async function sendMessage(text) {
   const content = (text || inputText.value).trim()
   if (!content) return
@@ -384,42 +383,6 @@ async function sendMessage(text) {
 
   messages.value.push({ role: 'user', content })
   scrollToBottom()
-
-  let finalPrompt = content
-
-  // 天气意图：尝试拦截并查询天气
-  if (weatherRegex.test(content)) {
-    let city = extractCity(content) || '北京' // 初筛兜底
-    let wData = await fetchWeather(city)
-
-    // 若第一次查询失败（如匹配到了"萧山"等区县，或者根本没查到），调用大模型进行名称上升映射
-    if (!wData || !wData.raw_text) {
-      try {
-        const aiResp = await fetch(`${settings.backendUrl}/extract_city`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${settings.dashscopeKey}`
-          },
-          body: JSON.stringify({ message: content })
-        })
-        if (aiResp.ok) {
-          const { city: smartCity } = await aiResp.json()
-          if (smartCity) {
-            city = smartCity
-            wData = await fetchWeather(city) // 使用智能获取的标准地市名再次尝试
-          }
-        }
-      } catch (e) {
-        console.warn('智能地名转换失败', e)
-      }
-    }
-
-    if (wData && wData.raw_text) {
-        // 将天气原始数据隐藏注入到发给模型的最终 Prompt 中
-        finalPrompt = `已知最新的【${city}】天气原始数据如下：\n\`\`\`\n${wData.raw_text}\n\`\`\`\n\n用户的问题是："${content}"\n\n请严格参考气象数据回答，务必包含具体的最高/最低气温、风力等核心数据。回答要简明扼要，直接切入正题，拒绝一切如“今天真是个好日子”之类的空泛废话和寒暄。结合数据简短提供：1.穿衣建议、2.出行建议、3.运动建议。不要完全输出死板表格。`
-    }
-  }
 
   // 添加 AI 占位
   const aiMsg = reactive({ role: 'assistant', content: '', loading: true })
@@ -433,14 +396,14 @@ async function sendMessage(text) {
       .filter(m => !m.loading)
       .map(m => ({ role: m.role, content: m.content }))
 
-    const resp = await fetch(`${settings.backendUrl}/chat`, {
+    const resp = await fetch(settings.backendUrl + "/chat", {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${settings.dashscopeKey}`
       },
       body: JSON.stringify({
-        message: finalPrompt,
+        message: content,
         history: history.slice(-10),
         system: "你是一个智能语音助手，请用简洁友好的中文回答问题。"
       }),
@@ -461,6 +424,22 @@ async function sendMessage(text) {
           if (obj.type === 'delta') {
             aiMsg.content += obj.content
             scrollToBottom()
+          } else if (obj.type === 'debug_event') {
+            // 支持显示后端在文字对话时返回的工具调用调试日志
+            debugLogs.value.push({
+              step: obj.step,
+              name: obj.name,
+              content: obj.content,
+              arguments: obj.arguments,
+              result: obj.result,
+              timestamp: Date.now(),
+              collapsed: false
+            })
+            nextTick(() => {
+              if (debugContentEl.value) {
+                debugContentEl.value.scrollTop = debugContentEl.value.scrollHeight
+              }
+            })
           } else if (obj.type === 'done') {
             break
           } else if (obj.type === 'error') {
@@ -765,6 +744,11 @@ async function startVoiceCall() {
 }
 
 async function endVoiceCall() {
+  debugLogs.value.push({
+    step: 'kws',
+    content: '🚫 退出语音对话，已恢复唤醒监听。',
+    timestamp: Date.now()
+  })
   inCall.value = false
   visualizerVolume.value = 1.0
 
@@ -802,18 +786,6 @@ async function endVoiceCall() {
 // ── 唤醒词触发
 function onKwsDebug(msg) {
   console.log('[KWS Debug]', msg)
-  // 写入右侧全链路调试控制台，保持主对话区域的清爽与美观
-  debugLogs.value.push({ 
-    step: 'kws', 
-    content: msg, 
-    timestamp: Date.now(),
-    collapsed: true
-  })
-  nextTick(() => {
-    if (debugContentEl.value) {
-      debugContentEl.value.scrollTop = debugContentEl.value.scrollHeight
-    }
-  })
 }
 
 function onWakeDetected(payload) {
@@ -831,6 +803,11 @@ function onWakeDetected(payload) {
 
   if (isStart) {
     if (!inCall.value) {
+      debugLogs.value.push({
+        step: 'kws',
+        content: `✨ 检测到唤醒词: [${settings.wakeWord}]，唤醒成功`,
+        timestamp: Date.now()
+      })
       startVoiceCall()
       if (messages.value.length === 0) {
         messages.value.push({ role: 'assistant', content: '我在，请吩咐。', isFinal: true })

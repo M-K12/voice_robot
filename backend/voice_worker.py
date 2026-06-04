@@ -11,11 +11,11 @@ from livekit.plugins import openai
 
 import logging
 file_handler = logging.FileHandler("worker_terminal.log")
-file_handler.setLevel(logging.DEBUG)
+file_handler.setLevel(logging.INFO)
 formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 file_handler.setFormatter(formatter)
 logging.getLogger().addHandler(file_handler)
-logging.getLogger().setLevel(logging.DEBUG)
+logging.getLogger().setLevel(logging.INFO)
 
 # Resolve the script path for spd-weather, identical to what was done in weather_router.py
 _SCRIPT = (

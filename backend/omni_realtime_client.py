@@ -5,8 +5,11 @@ import websockets
 import json
 import base64
 import time
+import logging
 from typing import Optional, Callable, List, Dict, Any
 from enum import Enum
+
+logger = logging.getLogger("xiaoan.omni")
 
 class TurnDetectionMode(Enum):
     SERVER_VAD = "server_vad"
@@ -54,6 +57,7 @@ class OmniRealtimeClient:
         on_interrupt: Optional[Callable[[], None]] = None,
         on_input_transcript: Optional[Callable[[str], None]] = None,
         on_output_transcript: Optional[Callable[[str], None]] = None,
+        on_output_transcript_completed: Optional[Callable[[str], None]] = None,
         on_conversation_update: Optional[Callable[[str, str], None]] = None,
         extra_event_handlers: Optional[Dict[str, Callable[[Dict[str, Any]], None]]] = None
     ):
@@ -67,6 +71,7 @@ class OmniRealtimeClient:
         self.on_interrupt = on_interrupt
         self.on_input_transcript = on_input_transcript
         self.on_output_transcript = on_output_transcript
+        self.on_output_transcript_completed = on_output_transcript_completed
         self.on_conversation_update = on_conversation_update
         self.turn_detection_mode = turn_detection_mode
         self.extra_event_handlers = extra_event_handlers or {}
@@ -125,7 +130,7 @@ class OmniRealtimeClient:
     async def send_event(self, event) -> None:
         event['event_id'] = "event_" + str(int(time.time() * 1000))
         if event.get('type') != 'input_audio_buffer.append':
-            print(f" Send event: type={event['type']}, event_id={event['event_id']}")
+            logger.debug(f"Send event: type={event['type']}, event_id={event['event_id']}")
         await self.ws.send(json.dumps(event))
 
     async def update_session(self, config: Dict[str, Any]) -> None:
@@ -134,7 +139,7 @@ class OmniRealtimeClient:
             "type": "session.update",
             "session": config
         }
-        print("update session: ", event)
+        logger.debug(f"update session: {event}")
         await self.send_event(event)
 
     async def stream_audio(self, audio_chunk: bytes) -> None:
@@ -183,7 +188,7 @@ class OmniRealtimeClient:
                 "modalities": ["text", "audio"]
             }
         }
-        print("create response: ", event)
+        logger.debug(f"create response: {event}")
         await self.send_event(event)
 
     async def cancel_response(self) -> None:
@@ -198,7 +203,7 @@ class OmniRealtimeClient:
         if not self._is_responding:
             return
 
-        print(" Handling interruption")
+        logger.info("Handling interruption")
 
         # 1. 取消当前回复
         if self._current_response_id:
@@ -215,12 +220,12 @@ class OmniRealtimeClient:
                 event_type = event.get("type")
                 
                 if event_type != "response.audio.delta":
-                    print(" event: ", event)
+                    logger.debug(f"event: {event}")
                 else:
-                    print(" event_type: ", event_type)
+                    logger.debug(f"event_type: {event_type}")
 
                 if event_type == "error":
-                    print(" Error: ", event['error'])
+                    logger.error(f"Error: {event['error']}")
                     continue
                 elif event_type == "response.created":
                     self._current_response_id = event.get("response", {}).get("id")
@@ -239,16 +244,16 @@ class OmniRealtimeClient:
                         self.extra_event_handlers[event_type](event)
                 # Handle interruptions
                 elif event_type == "input_audio_buffer.speech_started":
-                    print(" Speech detected")
+                    logger.debug("Speech detected")
                     if self._is_responding:
-                        print(" Handling interruption")
+                        logger.info("Handling interruption")
                         await self.handle_interruption()
 
                     if self.on_interrupt:
-                        print(" Handling on_interrupt, stop playback")
+                        logger.info("Handling on_interrupt, stop playback")
                         self.on_interrupt()
                 elif event_type == "input_audio_buffer.speech_stopped":
-                    print(" Speech ended")
+                    logger.debug("Speech ended")
                 # Handle normal response events
                 elif event_type == "response.text.delta":
                     delta = event.get("delta", "")
@@ -278,6 +283,8 @@ class OmniRealtimeClient:
                     # 发送完整的AI回复文本到对话更新回调
                     if self.on_conversation_update and self._current_output_text.strip():
                         await asyncio.to_thread(self.on_conversation_update, "assistant", self._current_output_text.strip())
+                    if self.on_output_transcript_completed and self._current_output_text.strip():
+                        await asyncio.to_thread(self.on_output_transcript_completed, self._current_output_text.strip())
                     # 清空当前输出文本缓存
                     self._current_output_text = ""
                     self._print_input_transcript = False
@@ -285,9 +292,9 @@ class OmniRealtimeClient:
                     self.extra_event_handlers[event_type](event)
 
         except websockets.exceptions.ConnectionClosed:
-            print(" Connection closed")
+            logger.info("Connection closed")
         except Exception as e:
-            print(" Error in message handling: ", str(e))
+            logger.error(f"Error in message handling: {e}")
 
     async def close(self) -> None:
         """关闭 WebSocket 连接。"""

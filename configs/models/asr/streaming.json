@@ -1,0 +1,5 @@
+{
+    "value": "streaming",
+    "label": "实时流式识别模式 (Zipformer Streaming)",
+    "asr_mode": "streaming"
+}

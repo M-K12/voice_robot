@@ -1,0 +1,22 @@
+{
+    "value": "qwen3.5-omni-plus-realtime",
+    "label": "qwen3.5-omni-plus-realtime",
+    "current_voice": "Ethan",
+    "voice_options": [
+        {
+            "value": "Ethan",
+            "label": "Ethan"
+        },
+        {
+            "value": "Tina",
+            "label": "Tina"
+        },
+        {
+            "value": "Theo Calm",
+            "label": "Theo Calm"
+        }
+    ],
+    "temperature": 0.9,
+    "max_tokens": 512,
+    "vad_silence_duration_ms": 800
+}

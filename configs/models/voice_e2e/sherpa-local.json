@@ -1,0 +1,9 @@
+{
+    "value": "sherpa-local",
+    "label": "sherpa-local",
+    "current_voice": "0",
+    "voice_options": [
+        { "value": "0", "label": "0" },
+        { "value": "1", "label": "1" }
+    ]
+}

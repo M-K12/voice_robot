@@ -1,0 +1,6 @@
+{
+    "value": "qwen-max",
+    "label": "qwen-max",
+    "tool_mode": "serial",
+    "tool_style": "native"
+}

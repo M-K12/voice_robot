@@ -1,0 +1,7 @@
+{
+    "label": "sherpa-onnx-kws-zipformer-wenetspeech-3.3M-2024-01-01",
+    "kws_max_active_paths": 4,
+    "kws_num_trailing_blanks": 1,
+    "kws_score": 1.5,
+    "kws_threshold": 0.25
+}

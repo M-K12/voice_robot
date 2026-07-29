@@ -1,0 +1,8 @@
+{
+    "value": "sherpa-vits",
+    "label": "sherpa-vits",
+    "current_speaker_id": 0,
+    "speed_rate": 1.05,
+    "silence_duration_ms": 1200,
+    "vad_energy_threshold": 0.025
+}

@@ -1,0 +1,37 @@
+{
+    "value": "qwen-audio-3.0-realtime-flash",
+    "label": "qwen-audio-3.0-realtime-flash",
+    "current_voice": "longanqian",
+    "voice_options": [
+        {
+            "value": "longanqian",
+            "label": "昂千 (温柔男声)"
+        },
+        {
+            "value": "longanlingxin",
+            "label": "聆心 (亲切女声)"
+        },
+        {
+            "value": "longanlingxi",
+            "label": "聆犀 (沉稳男声)"
+        },
+        {
+            "value": "longanxiaoxin",
+            "label": "小新 (活力男声)"
+        },
+        {
+            "value": "longanlufeng",
+            "label": "陆峰 (专业播音男声)"
+        }
+    ],
+    "qwen_audio_turn_mode": "server_vad",
+    "qwen_audio_vad_threshold": -0.8,
+    "qwen_audio_max_history_turns": 20,
+    "qwen_audio_voiceprint_mode": "none",
+    "selected_voiceprint_id": "Ming",
+    "qwen_audio_voiceprint_audio_urls": [],
+    "temperature": 0.9,
+    "max_tokens": 512,
+    "vad_silence_duration_ms": 350,
+    "stream_asr_enabled": true
+}

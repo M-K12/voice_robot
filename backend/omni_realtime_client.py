@@ -76,7 +76,9 @@ class OmniRealtimeClient:
         self.turn_detection_mode = turn_detection_mode
         self.extra_event_handlers = extra_event_handlers or {}
 
-        # 当前回复状态
+        # 当前输入/输出状态
+        self._current_input_item_id = None
+        self._current_input_text = ""
         self._current_response_id = None
         self._current_item_id = None
         self._is_responding = False
@@ -104,7 +106,7 @@ class OmniRealtimeClient:
 
         # 设置默认会话配置
         payload = {
-            "modalities": ["text"],
+            "modalities": ["text", "audio"] if self.voice else ["text"],
             "input_audio_format": "pcm16",
             "output_audio_format": "pcm16"
         }
@@ -212,6 +214,7 @@ class OmniRealtimeClient:
         self._is_responding = False
         self._current_response_id = None
         self._current_item_id = None
+        self._current_output_text = ""
 
     async def handle_messages(self) -> None:
         try:
@@ -230,6 +233,8 @@ class OmniRealtimeClient:
                 elif event_type == "response.created":
                     self._current_response_id = event.get("response", {}).get("id")
                     self._is_responding = True
+                    if event_type in self.extra_event_handlers:
+                        self.extra_event_handlers[event_type](event)
                 elif event_type == "response.output_item.added":
                     self._current_item_id = event.get("item", {}).get("id")
                     # Also check extra_event_handlers for function call detection
@@ -248,10 +253,9 @@ class OmniRealtimeClient:
                     if self._is_responding:
                         logger.info("Handling interruption")
                         await self.handle_interruption()
-
-                    if self.on_interrupt:
-                        logger.info("Handling on_interrupt, stop playback")
-                        self.on_interrupt()
+                        if self.on_interrupt:
+                            logger.info("Handling on_interrupt, stop playback")
+                            self.on_interrupt()
                 elif event_type == "input_audio_buffer.speech_stopped":
                     logger.debug("Speech ended")
                 # Handle normal response events
@@ -266,14 +270,31 @@ class OmniRealtimeClient:
                     if self.on_audio_delta:
                         audio_bytes = base64.b64decode(event["delta"])
                         self.on_audio_delta(audio_bytes)
+                elif event_type == "conversation.item.input_audio_transcription.delta":
+                    stash = event.get("stash", "")
+                    item_id = event.get("item_id")
+                    if not stash or not item_id:
+                        continue
+                    # 新的 utterance 开始，重置缓存
+                    if item_id != self._current_input_item_id:
+                        self._current_input_item_id = item_id
+                        self._current_input_text = ""
+                    # 仅在有变化时推送，避免重复发送
+                    if stash != self._current_input_text:
+                        self._current_input_text = stash
+                        if self.on_input_transcript:
+                            await self.on_input_transcript(stash, is_final=False, item_id=item_id)
                 elif event_type == "conversation.item.input_audio_transcription.completed":
                     transcript = event.get("transcript", "")
-                    if self.on_input_transcript:
-                        await asyncio.to_thread(self.on_input_transcript,transcript)
+                    item_id = event.get("item_id") or self._current_input_item_id
+                    self._current_input_item_id = None
+                    self._current_input_text = ""
+                    if transcript and self.on_input_transcript:
+                        await self.on_input_transcript(transcript, is_final=True, item_id=item_id)
                         self._print_input_transcript = True
                     # 发送用户文本到对话更新回调
-                    if self.on_conversation_update:
-                        await asyncio.to_thread(self.on_conversation_update, "user", transcript)
+                    if transcript and self.on_conversation_update:
+                        await self.on_conversation_update("user", transcript)
                 elif event_type == "response.audio_transcript.delta":
                     delta = event.get("delta", "")
                     self._current_output_text += delta
@@ -296,7 +317,17 @@ class OmniRealtimeClient:
         except Exception as e:
             logger.error(f"Error in message handling: {e}")
 
+    def flush_current_input_as_final(self):
+        """兜底收敛：将当前 interim stash 作为 final 取出并清空缓存，避免重复发送。"""
+        if not self._current_input_text or not self._current_input_item_id:
+            return None
+        text, item_id = self._current_input_text, self._current_input_item_id
+        self._current_input_item_id = None
+        self._current_input_text = ""
+        return text, item_id
+
     async def close(self) -> None:
         """关闭 WebSocket 连接。"""
         if self.ws:
             await self.ws.close()
+

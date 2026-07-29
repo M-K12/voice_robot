@@ -1,18 +1,8 @@
 """
-Voice Robot Backend — FastAPI 主入口（前后端分离版本）
-
-架构:
-  - 后端常驻录音（sounddevice）→ KWS 唤醒检测 → Omni 对话 → 扬声器播放
-  - 前端通过 SSE 被动接收事件（唤醒/转录/天气/挂断）
-  - 前端无麦克风、无播放、无 WebSocket
-
-提供路由:
-  GET  /sse      → SSE 长连接（前端唯一数据通道）
-  GET  /weather  → 天气查询
-  GET  /health   → 健康检查
+Voice Robot Backend — FastAPI 主入口
 
 运行方式:
-  uv run uvicorn backend.main:app --host 127.0.0.1 --port 8765 --reload
+  uv run python backend/main.py --reload
 """
 
 from __future__ import annotations
@@ -21,15 +11,36 @@ import os
 import json
 import asyncio
 import base64
+import logging
 import traceback
+from pathlib import Path
+from typing import List, Optional
+from contextlib import asynccontextmanager
+
 import uvicorn
 import httpx
-import logging
-from pydantic import BaseModel
-from typing import List, Optional
 from dotenv import load_dotenv
+from pydantic import BaseModel
 
 load_dotenv()
+
+# Sanitize NO_PROXY to prevent httpx parsing errors with IPv6 addresses like ::1/128
+no_proxy = os.environ.get("NO_PROXY", "")
+if no_proxy:
+    parts = []
+    for part in no_proxy.split(","):
+        part = part.strip()
+        if not part:
+            continue
+        if ":" in part:
+            # httpx does not support brackets or CIDR suffixes for IPv6 in NO_PROXY
+            part = part.replace("[", "").replace("]", "")
+            if "/" in part:
+                part = part.split("/", 1)[0]
+        if part and part not in parts:
+            parts.append(part)
+    os.environ["NO_PROXY"] = ",".join(parts)
+
 
 # Configure logging at the module level
 logging.basicConfig(
@@ -37,20 +48,63 @@ logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logging.getLogger("xiaoan").setLevel(logging.INFO)
+logger = logging.getLogger("xiaoan.main")
 
-from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
+# Filter out repetitive health check access logs to keep terminal clean
+class HealthCheckFilter(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        return "GET /health" not in record.getMessage()
+
+logging.getLogger("uvicorn.access").addFilter(HealthCheckFilter())
+
+from fastapi import FastAPI, Request, Response, HTTPException, WebSocket, WebSocketDisconnect, BackgroundTasks
+from starlette.websockets import WebSocketState
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 
-from backend.weather_router import router as weather_router
-from backend.omni_realtime_client import OmniRealtimeClient, TurnDetectionMode
+
+
+from backend.local_voice_handler import handle_local_voice_session
 from backend.sse_hub import sse_hub
 from backend.utils import fetch_default_city, get_tool_calling_mode, get_tool_calling_style, normalize_tool_name
 from backend.tools import GLOBAL_TOOLS_SCHEMA, get_instructions, ToolContext, execute_tool
+from backend.weather_router import router as weather_router
 
 # FastAPI 初始化
-app = FastAPI(title="Voice Robot Backend", version="2.0.0")
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """应用生命周期管理：替代已废弃的 on_event startup/shutdown。"""
+    # ── startup ──
+    global DEFAULT_CITY
+    DEFAULT_CITY = await fetch_default_city()
 
+    from backend.utils import load_config
+    cfg = load_config()
+    console_lvl = cfg.get("log_level", "INFO")
+    file_lvl = cfg.get("log_file_level", "WARNING")
+
+    from backend.logger_setup import setup_logging
+    logging.info(f"🚀 [Backend Service Started] Voice Robot Backend v2.0 | 默认城市: {DEFAULT_CITY}")
+
+    # ── 声纹预加载：仅当配置模型为 Qwen-Audio 且为 static 模式时异步预加载指定角色的采样 ──
+    voice_model = cfg.get("voice_model_name", "")
+    if voice_model and "qwen-audio" in voice_model.lower():
+        from backend.qwen_audio_realtime_handler import preload_static_voiceprints
+        asyncio.create_task(preload_static_voiceprints(cfg))
+
+
+
+
+
+    yield  # 应用正常运行期间
+
+    # ── shutdown ──
+    pass
+
+
+app = FastAPI(title="Voice Robot Backend", version="2.0.0", lifespan=lifespan)
+
+# 挂载 CORS 中间件与路由
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -61,6 +115,95 @@ app.add_middleware(
 
 app.include_router(weather_router)
 
+
+
+
+
+class VisualBroadcastManager:
+    def __init__(self):
+        self.clients: set[WebSocket] = set()
+
+    async def register(self, websocket: WebSocket):
+        self.clients.add(websocket)
+        logging.info(f"[VisualBroadcastManager] 大屏视觉端连接成功. 当前连接数: {len(self.clients)}")
+
+    def unregister(self, websocket: WebSocket):
+        self.clients.discard(websocket)
+        logging.info(f"[VisualBroadcastManager] 大屏视觉端断开连接. 当前连接数: {len(self.clients)}")
+
+    async def broadcast(self, payload: dict):
+        from backend.utils import load_config
+        config = load_config()
+        if not config.get("enable_visual_broadcast"):
+            return
+        if not self.clients:
+            return
+        dead = set()
+        for ws in self.clients:
+            try:
+                await ws.send_json(payload)
+            except Exception:
+                dead.add(ws)
+        self.clients -= dead
+
+visual_broadcast_manager = VisualBroadcastManager()
+
+# ──────────────────────────────────────────────
+# 前端日志异步收集 API
+# ──────────────────────────────────────────────
+@app.post("/api/logs/frontend")
+async def receive_frontend_logs(request: Request):
+    try:
+        data = await request.json()
+        level = (data.get("level") or "info").lower()
+        msg = data.get("message", "")
+        context = data.get("context", "")
+        log_line = f"[{context}] {msg}" if context else msg
+
+        from backend.logger_setup import frontend_logger
+        if level == "error":
+            frontend_logger.error(log_line)
+        elif level == "warn" or level == "warning":
+            frontend_logger.warning(log_line)
+        else:
+            frontend_logger.info(log_line)
+        return {"status": "ok"}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+# ──────────────────────────────────────────────
+# WebSocket 视觉大屏同步推送路由 (独立大屏连接)
+# ──────────────────────────────────────────────
+@app.websocket("/ws/visual")
+async def ws_visual_endpoint(websocket: WebSocket):
+    await websocket.accept()
+    await visual_broadcast_manager.register(websocket)
+    try:
+        while True:
+            text = await websocket.receive_text()
+            try:
+                msg = json.loads(text)
+                msg_type = msg.get("type")
+                msg_data = msg.get("data", {})
+                if msg_type == "INIT_LOCATION":
+                    loc = msg.get("location", "")
+                    logger.info(f"[WS-Visual] 大屏请求恢复初始定位: {loc}")
+                elif msg_type == "restore_location":
+                    loc = msg_data.get("location")
+                    logger.info(f"[WS-Visual] 大屏请求恢复初始定位: {loc}")
+                    await visual_broadcast_manager.broadcast({
+                        "type": "restore_location",
+                        "location": loc
+                    })
+            except Exception as e:
+                logger.error(f"[WS-Visual] 消息解析异常: {e}")
+    except WebSocketDisconnect:
+        pass
+    except Exception as e:
+        logger.error(f"[WS-Visual] 连接异常: {e}")
+    finally:
+        visual_broadcast_manager.unregister(websocket)
+
 DEFAULT_CITY = "北京"
 DASHSCOPE_API_KEY = os.getenv("DASHSCOPE_API_KEY", "")
 
@@ -68,220 +211,56 @@ DASHSCOPE_API_KEY = os.getenv("DASHSCOPE_API_KEY", "")
 # WebSocket 语音路由 (前端接入麦克风与播放)
 # ──────────────────────────────────────────────
 @app.websocket("/voice_ws")
-async def voice_websocket_endpoint(websocket: WebSocket, voice: str = "Cherry", token: str = ""):
+async def voice_websocket_endpoint(websocket: WebSocket, voice: str = "Tina"):
     await websocket.accept()
-    print("\n\033[96m[WS] 前端语音通话 WebSocket 已连接\033[0m")
+    logger.info("[WS] 前端语音通话 WebSocket 已连接")
     
     from backend.utils import load_config
     config = load_config()
-    voice_model = config.get("voice_model_name", "qwen3.5-omni-plus-realtime")
+    voice_model = config.get("voice_model_name")
     
-    api_key = token if token else DASHSCOPE_API_KEY
-    if not api_key:
-        print("[WS] 错误: 缺少 API Key")
-        await websocket.close(code=4000, reason="API Key is missing")
+    if voice_model == "sherpa-local":
+        await handle_local_voice_session(
+            websocket=websocket,
+            voice=voice,
+            config=config,
+            run_chat_workflow_fn=run_chat_workflow,
+            visual_broadcast_manager=visual_broadcast_manager
+        )
         return
-        
-    client = None
-    session_active = True
-    expecting_weather_summary = False
-    loop = asyncio.get_running_loop()
-    tool_lock = asyncio.Lock()
-    
-    # ── Callbacks for Omni ──
-    async def on_interrupt():
-        print("\033[93m[WS-Omni] User speaking detected - interrupting AI playback\033[0m")
-        try:
-            await websocket.send_json({"type": "interrupt"})
-        except Exception:
-            pass
-
-    def on_input_transcript(text: str):
-        if not text.strip(): return
-        print(f"\033[94m[WS-STT] User: {text}\033[0m")
-        asyncio.run_coroutine_threadsafe(
-            websocket.send_json({"type": "input_transcript", "data": text}),
-            loop
+    elif voice_model == "xunfei-realtime":
+        from backend.xunfei_realtime_handler import handle_xunfei_realtime_session
+        await handle_xunfei_realtime_session(
+            websocket=websocket,
+            voice=voice,
+            config=config,
+            run_chat_workflow_fn=run_chat_workflow,
+            visual_broadcast_manager=visual_broadcast_manager
         )
-        asyncio.run_coroutine_threadsafe(
-            websocket.send_json({"type": "debug_event", "step": "stt", "content": text}),
-            loop
+        return
+    elif voice_model and "qwen-audio" in voice_model.lower():
+        from backend.qwen_audio_realtime_handler import handle_qwen_audio_realtime_session
+        await handle_qwen_audio_realtime_session(
+            websocket=websocket,
+            voice=voice,
+            config=config,
+            visual_broadcast_manager=visual_broadcast_manager
         )
+        return
 
-    def on_output_transcript(text: str, response_id: str):
-        nonlocal expecting_weather_summary
-        if expecting_weather_summary:
-            expecting_weather_summary = False
-            # 发送 weather_summary 替换前端的“正在总结”提示
-            asyncio.run_coroutine_threadsafe(
-                websocket.send_json({"type": "weather_summary", "data": text}),
-                loop
-            )
-        else:
-            asyncio.run_coroutine_threadsafe(
-                websocket.send_json({"type": "output_transcript", "data": text}),
-                loop
-            )
-        asyncio.run_coroutine_threadsafe(
-            websocket.send_json({"type": "debug_event", "step": "tts", "content": text}),
-            loop
+    else:
+        # 默认或 Qwen-Omni 实时多模态模型 (qwen3.5-omni-plus-realtime / qwen3.5-omni-flash-realtime)
+        from backend.qwen_omni_realtime_handler import handle_qwen_omni_realtime_session
+        await handle_qwen_omni_realtime_session(
+            websocket=websocket,
+            api_key=DASHSCOPE_API_KEY,
+            voice_model=voice_model or "qwen3.5-omni-plus-realtime",
+            voice=voice,
+            default_city_cfg=DEFAULT_CITY,
+            config=config,
+            visual_broadcast_manager=visual_broadcast_manager,
         )
-
-    def on_output_transcript_completed(text: str):
-        if text.strip():
-            print(f"\033[92m[WS-TTS] AI: {text.strip()}\033[0m")
-
-    def on_audio_delta(audio_bytes: bytes):
-        asyncio.run_coroutine_threadsafe(
-            websocket.send_bytes(audio_bytes),
-            loop
-        )
-
-    # ── Tool call handler ──
-    voice_mode = get_tool_calling_mode("voice", voice_model)
-    print(f"\033[93m[Tool Mode Choice] Channel=voice, Model={voice_model} -> Mode={voice_mode}\033[0m")
-
-    async def handle_ws_tool_call(event):
-        nonlocal session_active, expecting_weather_summary
-        
-        async def do_call():
-            nonlocal session_active, expecting_weather_summary
-            call_id = event.get("call_id")
-            name = normalize_tool_name(event.get("name"))
-            arguments_str = event.get("arguments", "{}")
-            
-            print(f"\033[95m[WS Tool Call] Received request: name={name}, call_id={call_id}, args={arguments_str}\033[0m")
-            try:
-                await websocket.send_json({
-                    "type": "debug_event",
-                    "step": "intent",
-                    "content": f"语义分析决定调用工具: {name}"
-                })
-            except Exception:
-                pass
-            
-            try:
-                ctx = ToolContext(
-                    websocket=websocket,
-                    default_city=DEFAULT_CITY,
-                    expecting_weather_summary=expecting_weather_summary,
-                    session_active=session_active
-                )
-                
-                result_payload = await execute_tool(name, arguments_str, ctx)
-                
-                # Sync context changes back to local variables
-                expecting_weather_summary = ctx.expecting_weather_summary
-                session_active = ctx.session_active
-            except Exception as e:
-                print(f"\033[91m[WS Tool Call Exception] Error executing tool: {e}\033[0m")
-                traceback.print_exc()
-                result_payload = json.dumps({"error": str(e)})
-                
-            try:
-                await client.send_event({
-                    "type": "conversation.item.create",
-                    "item": {
-                        "type": "function_call_output",
-                        "call_id": call_id,
-                        "output": result_payload
-                    }
-                })
-                await client.send_event({"type": "response.create"})
-            except Exception as e:
-                print(f"\033[91m[WS Tool Call client send error]: {e}\033[0m")
-
-        if voice_mode == "serial":
-            # 串行模式，加锁排队
-            async with tool_lock:
-                await do_call()
-        else:
-            # 并行模式，直接运行
-            await do_call()
-
-    def on_tool_call(event):
-        asyncio.create_task(handle_ws_tool_call(event))
-
-    instructions = get_instructions(DEFAULT_CITY)
-
-    try:
-        client = OmniRealtimeClient(
-            base_url="wss://dashscope.aliyuncs.com/api-ws/v1/realtime",
-            api_key=api_key,
-            model=voice_model,
-            on_interrupt=lambda: asyncio.create_task(on_interrupt()),
-            on_input_transcript=on_input_transcript,
-            on_output_transcript=on_output_transcript,
-            on_output_transcript_completed=on_output_transcript_completed,
-            on_audio_delta=on_audio_delta,
-            turn_detection_mode=TurnDetectionMode.SERVER_VAD,
-            extra_event_handlers={
-                "response.function_call_arguments.done": on_tool_call,
-                "response.created": lambda e: None,
-                "response.done": lambda e: None,
-                "conversation.item.input_audio_transcription.delta": lambda e: None
-            }
-        )
-        await client.connect()
-        await client.update_session({
-            "modalities": ["text", "audio"],
-            "instructions": instructions,
-            "tools": GLOBAL_TOOLS_SCHEMA,
-            "tool_choice": "auto",
-            "turn_detection": {
-                "type": "server_vad",
-                "threshold": 0.85,
-                "prefix_padding_ms": 300,
-                "silence_duration_ms": 700,
-                "create_response": True
-            }
-        })
-
-        msg_task = asyncio.create_task(client.handle_messages())
-
-        # Receive from frontend WS loop
-        while session_active:
-            msg = await websocket.receive()
-            if "bytes" in msg:
-                data = msg["bytes"]
-                if len(data) > 1 and data[0] == 0x00:
-                    pcm_bytes = data[1:]
-                    await client.send_event({
-                        "type": "input_audio_buffer.append",
-                        "audio": base64.b64encode(pcm_bytes).decode()
-                    })
-            elif "text" in msg:
-                try:
-                    payload = json.loads(msg["text"])
-                    if payload.get("type") == "query":
-                        text = payload.get("text", "")
-                        if text == "退下":
-                            await websocket.send_json({"type": "hangup"})
-                            session_active = False
-                except Exception:
-                    pass
-
-        msg_task.cancel()
-        
-    except WebSocketDisconnect:
-        print("[WS] 前端语音通话 WebSocket 已断开。")
-    except RuntimeError as e:
-        if "receive" in str(e) or "disconnect" in str(e):
-            print(f"[WS] 前端语音通话 WebSocket 已断开 ({e})")
-        else:
-            print(f"[WS] 运行时发生异常: {e}")
-            traceback.print_exc()
-    except Exception as e:
-        print(f"[WS] 运行时发生异常: {e}")
-        traceback.print_exc()
-    finally:
-        session_active = False
-        if client:
-            try:
-                await client.close()
-            except Exception:
-                pass
-        print("[WS] 前端语音通话会话已结束")
+        return
 
 # ──────────────────────────────────────────────
 # 路由
@@ -472,11 +451,18 @@ EXTRACTION_PROMPTS = {
     )
 }
 
-@app.post("/chat")
-async def chat_endpoint(request: ChatRequest):
+async def run_chat_workflow(message: str, history: List[ChatMessage] | List[dict], system: Optional[str] = None, is_voice: bool = False):
+    # 1. 统一历史消息格式为 dict
+    normalized_history = []
+    for msg in history:
+        if isinstance(msg, dict):
+            normalized_history.append(msg)
+        else:
+            normalized_history.append({"role": msg.role, "content": msg.content})
+
     async def event_generator():
         # 1. Simulate speech transcription to align workflow (Step 1: stt)
-        yield f'data: {json.dumps({"type": "debug_event", "step": "stt", "content": request.message}, ensure_ascii=False)}\n\n'
+        yield f'data: {json.dumps({"type": "debug_event", "step": "stt", "content": message}, ensure_ascii=False)}\n\n'
         
         from datetime import datetime
         today_str = datetime.now().strftime("%Y-%m-%d")
@@ -484,13 +470,18 @@ async def chat_endpoint(request: ChatRequest):
         # 决定大模型参数与渠道
         from backend.utils import load_config
         config = load_config()
-        model_name = config.get("text_model_name", "qwen2.5:1.5b-instruct-q4_K_M")
-        tool_mode = get_tool_calling_mode("text", model_name)
-        print(f"\033[93m[Tool Mode Choice] Channel=text, Model={model_name} -> Mode={tool_mode}\033[0m")
+        
+        if is_voice:
+            model_name = config.get("voice_cascade_model_name") or config.get("text_model_name")
+            tool_mode = config.get("voice_cascade_model_tool_mode", "serial")
+            tool_style = config.get("voice_cascade_model_tool_style", "native")
+        else:
+            model_name = config.get("text_model_name")
+            tool_mode = config.get("text_model_tool_mode", "serial")
+            tool_style = config.get("text_model_tool_style", "native")
 
-        is_openai_model = (model_name == "qwen3.5-flash")
-        tool_style = get_tool_calling_style(model_name)
-        print(f"\033[93m[Tool Style Choice] Model={model_name} -> Style={tool_style}\033[0m")
+        print(f"\033[93m[LLM Brain Choice] Channel={'voice_cascade' if is_voice else 'text'}, Model={model_name} -> Mode={tool_mode}, Style={tool_style}\033[0m")
+        is_openai_model = (tool_style == "native")
         
         if is_openai_model:
             api_url = "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions"
@@ -503,43 +494,37 @@ async def chat_endpoint(request: ChatRequest):
             headers = {"Content-Type": "application/json"}
 
         if tool_style == "native":
+            chat_prompt_prefix = (
+                "【绝对指令】：你自身没有任何实时的天气、灾情和资源数据。每当用户询问任何关于天气、冷热、下雨、风力、预警、展示大屏图层、避难所、物资、历史灾情等问题时，"
+                "你必须且只能选择调用相应的工具函数（如 get_weather_forecast、show_screen_layer 等），绝对禁止你直接猜测或脑补回答！\n\n"
+            )
             system_instruction = (
-                get_instructions(DEFAULT_CITY) +
+                chat_prompt_prefix + get_instructions(DEFAULT_CITY) +
                 f"\n今天是 {today_str}。\n"
                 "请根据用户提问，按需使用工具；如不需要工具则直接精简中文回答（在3句以内，且绝对不要提供 any 出行、穿衣或运动建议，也不要输出死板的表格）。"
             )
             formatted_messages = [
                 {"role": "system", "content": system_instruction}
             ]
-            for msg in request.history:
-                formatted_messages.append({"role": msg.role, "content": msg.content})
-            formatted_messages.append({"role": "user", "content": request.message})
+            for msg in normalized_history:
+                formatted_messages.append({"role": msg["role"], "content": msg["content"]})
+            formatted_messages.append({"role": "user", "content": message})
         else:
             formatted_messages = [
                 {"role": "system", "content": ROUTER_SYSTEM_PROMPT}
             ]
-            for msg in request.history:
-                formatted_messages.append({"role": msg.role, "content": msg.content})
-            formatted_messages.append({"role": "user", "content": request.message})
+            for msg in normalized_history:
+                formatted_messages.append({"role": msg["role"], "content": msg["content"]})
+            formatted_messages.append({"role": "user", "content": message})
 
         try:
             async with httpx.AsyncClient(timeout=30.0) as client:
                 # 1. 无论是串行还是并行模式，都通过第一轮非流式请求获取所需全部工具列表
                 if tool_style == "native":
-                    openai_tools = []
-                    for tool in GLOBAL_TOOLS_SCHEMA:
-                        openai_tools.append({
-                            "type": "function",
-                            "function": {
-                                "name": tool["name"],
-                                "description": tool.get("description", ""),
-                                "parameters": tool.get("parameters", {})
-                            }
-                        })
                     payload = {
                         "model": model_name,
                         "messages": formatted_messages,
-                        "tools": openai_tools,
+                        "tools": GLOBAL_TOOLS_SCHEMA,
                         "tool_choice": "auto",
                         "stream": False
                     }
@@ -607,9 +592,9 @@ async def chat_endpoint(request: ChatRequest):
                             extraction_prompt = prompt_tmpl.format(today_str=today_str, default_city=DEFAULT_CITY)
                             
                             # 模式 B 聚焦子句，过滤非本工具任务对应的城市干扰
-                            focused_message = request.message
+                            focused_message = message
                             import re
-                            clauses = re.split(r"[，。？！；,\?\!\;]|顺便|另外|以及|还有", request.message)
+                            clauses = re.split(r"[，。？！；,\?\!\;]|顺便|另外|以及|还有", message)
                             clauses = [c.strip() for c in clauses if c.strip()]
                             
                             tool_keywords = {
@@ -618,7 +603,7 @@ async def chat_endpoint(request: ChatRequest):
                                 "show_screen_layer": ["图层", "雷达", "卫星", "路径", "积水", "内涝", "视频监控", "无人机", "消防通道", "图", "展示", "大屏"],
                                 "query_emergency_knowledge": ["避灾", "避难", "隐患点", "救援", "物资", "安全隐患", "储备"],
                                 "zoom_map": ["放大", "缩小"],
-                                "hangup": ["挂断", "再见", "拜拜", "退下"]
+                                "hangup": ["挂断", "再见", "拜拜", "退下", "去休息吧", "退出", "别说了", "闭嘴", "滚蛋"]
                             }
                             
                             keywords = tool_keywords.get(t_name, [])
@@ -629,7 +614,7 @@ async def chat_endpoint(request: ChatRequest):
                             
                             if matched_clauses:
                                 focused_message = "，".join(matched_clauses)
-                                print(f"\033[93m[Parameter Focus Window] 工具 {t_name} 匹配到聚焦子句: '{focused_message}' (原句: '{request.message}')\033[0m")
+                                print(f"\033[93m[Parameter Focus Window] 工具 {t_name} 匹配到聚焦子句: '{focused_message}' (原句: '{message}')\033[0m")
                             
                             extraction_messages = [
                                 {"role": "system", "content": extraction_prompt},
@@ -674,7 +659,7 @@ async def chat_endpoint(request: ChatRequest):
                             name = normalize_tool_name(t_data["tool"])
                             t_data["tool"] = name
                             args = {k: v for k, v in t_data.items() if k not in ["tool", "call_id"]}
-                            args = _guard_tool_args(name, args, request.message, today_str)
+                            args = _guard_tool_args(name, args, message, today_str)
                             arguments_str = json.dumps(args, ensure_ascii=False)
 
                             yield f'data: {json.dumps({"type": "debug_event", "step": "intent", "content": f"语义分析决定调用工具(串行): {name}"}, ensure_ascii=False)}\n\n'
@@ -704,7 +689,7 @@ async def chat_endpoint(request: ChatRequest):
                             name = normalize_tool_name(t_data["tool"])
                             t_data["tool"] = name
                             args = {k: v for k, v in t_data.items() if k not in ["tool", "call_id"]}
-                            args = _guard_tool_args(name, args, request.message, today_str)
+                            args = _guard_tool_args(name, args, message, today_str)
                             arguments_str = json.dumps(args, ensure_ascii=False)
 
                             yield f'data: {json.dumps({"type": "debug_event", "step": "intent", "content": f"语义分析决定调用工具(并行): {name}"}, ensure_ascii=False)}\n\n'
@@ -744,17 +729,19 @@ async def chat_endpoint(request: ChatRequest):
                         }
                     else:
                         tool_summary_prompt = (
-                            f"你是一个智能气象应急助手。用户的问题是：“{request.message}”。\n"
+                            f"你是一个智能气象应急助手。用户的问题是：“{message}”。\n"
                             f"系统已经为你执行了以下工具并返回了最新原始数据：\n"
                             f"{chr(10).join(combined_results)}\n"
                             "【指令】请严格根据上面的原始数据，直接、正面、精准地回答用户的问题（例如说出具体温度、天气状况等）。直接切入正题，不要提供 any 出行、穿衣或运动建议，也不要输出死板的表格。"
                         )
 
                         second_messages = []
-                        if request.system:
-                            second_messages.append({"role": "system", "content": request.system})
-                        for msg in request.history:
-                            second_messages.append({"role": msg.role, "content": msg.content})
+                        if system:
+                            second_messages.append({"role": "system", "content": system})
+                        else:
+                            second_messages.append({"role": "system", "content": f"你是一个智能气象应急助手。今天是 {today_str}。当前默认聚焦的城市是：{DEFAULT_CITY}。"})
+                        for msg in normalized_history:
+                            second_messages.append({"role": msg["role"], "content": msg["content"]})
                         second_messages.append({"role": "user", "content": tool_summary_prompt})
 
                         second_payload = {
@@ -796,8 +783,6 @@ async def chat_endpoint(request: ChatRequest):
                             except Exception:
                                 pass
                         
-                        if is_openai_model:
-                            yield f'data: {json.dumps({"type": "debug_event", "step": "tts", "content": accumulated_content}, ensure_ascii=False)}\n\n'
                             yield f'data: {json.dumps({"type": "done"})}\n\n'
                 else:
                     # 无需调用工具，直接回复
@@ -820,9 +805,9 @@ async def chat_endpoint(request: ChatRequest):
                         chat_messages = [
                             {"role": "system", "content": chat_instruction}
                         ]
-                        for msg in request.history:
-                            chat_messages.append({"role": msg.role, "content": msg.content})
-                        chat_messages.append({"role": "user", "content": request.message})
+                        for msg in normalized_history:
+                            chat_messages.append({"role": msg["role"], "content": msg["content"]})
+                        chat_messages.append({"role": "user", "content": message})
                         
                         chat_payload = {
                             "model": model_name,
@@ -854,7 +839,20 @@ async def chat_endpoint(request: ChatRequest):
         except Exception as e:
             yield f'data: {json.dumps({"type": "error", "message": str(e)})}\n\n'
 
-    return StreamingResponse(event_generator(), media_type="text/event-stream")
+    async for event in event_generator():
+        yield event
+
+
+
+
+
+
+
+
+@app.post("/chat")
+async def chat_endpoint(request: ChatRequest):
+    print(f"\033[96m[Chat] 用户文字提问: '{request.message}'\033[0m")
+    return StreamingResponse(run_chat_workflow(request.message, request.history, request.system, is_voice=False), media_type="text/event-stream")
 
 @app.post("/extract_city")
 async def extract_city_endpoint(request: Request):
@@ -912,25 +910,52 @@ async def sse_endpoint(request: Request):
     )
 
 @app.get("/config")
-def get_config_endpoint():
-    from backend.utils import load_config
-    return load_config()
+def get_config_endpoint(sherpa_model_dir: str = None):
+    from backend.utils import load_config, read_wake_word_from_model
+    cfg = load_config()
+    # 如果接口传了特定的 sherpa_model_dir，则使用该 sherpa_model_dir 查询，否则使用当前配置中的 sherpa_model_dir
+    target_dir = sherpa_model_dir if sherpa_model_dir else cfg.get("sherpa_model_dir")
+    cfg["wake_word"] = read_wake_word_from_model(target_dir)
+    if sherpa_model_dir:
+        # 如果是专门查询特定模型的 wake_word，返回以特定格式
+        return {"wake_word": cfg["wake_word"], "sherpa_model_dir": target_dir}
+    return cfg
 
 @app.post("/config")
 def update_config_endpoint(new_config: dict):
-    from backend.utils import load_config
-    import json
-    from pathlib import Path
-    config_path = (Path(__file__).parent.parent / "config.json").resolve()
-    current = load_config()
-    current.update(new_config)
+    from backend.utils import save_config_split, write_wake_word_to_model
+    from backend.logger_setup import update_logging_levels
+    
+    # 提取 wake_word 和 sherpa_model_dir 写入对应的 keywords.txt 词表
+    wake_word = new_config.get("wake_word")
+    model_dir = new_config.get("sherpa_model_dir")
+    if wake_word and model_dir:
+        try:
+            write_wake_word_to_model(model_dir, wake_word)
+        except Exception as e:
+            logger.error(f"[POST /config] Failed to write wake_word to keywords.txt: {e}")
+            
     try:
-        with open(config_path, "w", encoding="utf-8") as f:
-            json.dump(current, f, indent=4, ensure_ascii=False)
-        return {"status": "success", "config": current}
+        merged_config = save_config_split(new_config)
+        
+        # 实时推算并切升级别
+        console_lvl = merged_config.get("log_level", "INFO")
+        file_lvl = merged_config.get("log_file_level", "WARNING")
+        update_logging_levels(console_level=console_lvl, file_level=file_lvl)
+
+        # 实时触发声纹预加载缓存更新
+        from backend.qwen_audio_realtime_handler import preload_static_voiceprints
+        asyncio.create_task(preload_static_voiceprints(merged_config))
+
+        return {"status": "success", "config": merged_config}
     except Exception as e:
         from fastapi import HTTPException
         raise HTTPException(status_code=500, detail=str(e))
+
+
+
+
+
 
 @app.get("/health")
 def health_check():
@@ -940,45 +965,40 @@ def health_check():
         "sse_clients": sse_hub.client_count,
     }
 
+@app.get("/device_id")
+async def get_device_id():
+    """获取设备唯一ID"""
+    import uuid
+    import socket
+    device_id = uuid.uuid5(uuid.NAMESPACE_DNS, socket.gethostname() + uuid.getnode().__str__()).hex
+    return {"device_id": device_id}
+
+
+@app.get("/audio/zai.wav")
+def get_zai_audio(voice: str = "Tina"):
+    from fastapi.responses import FileResponse
+    from pathlib import Path
+    audio_path = (Path(__file__).parent / "assets" / f"zai_{voice}.wav").resolve()
+    if audio_path.exists():
+        return FileResponse(audio_path, media_type="audio/wav")
+    # Fallback to default Tina voice
+    fallback_path = (Path(__file__).parent / "assets" / "zai_Tina.wav").resolve()
+    if fallback_path.exists():
+        return FileResponse(fallback_path, media_type="audio/wav")
+    from fastapi import HTTPException
+    raise HTTPException(status_code=404, detail="Audio file not found")
+
 # ──────────────────────────────────────────────
-# 启动与关闭
+# 启动与关闭已迁移至顶部 lifespan() 函数
 # ──────────────────────────────────────────────
-@app.on_event("startup")
-async def startup_event():
-    global DEFAULT_CITY
-    DEFAULT_CITY = await fetch_default_city()
-
-    # Configure xiaoan logger explicitly to output to stderr/stdout on startup
-    xiaoan_logger = logging.getLogger("xiaoan")
-    xiaoan_logger.setLevel(logging.INFO)
-    
-    # Force level to INFO for all handlers
-    for handler in logging.getLogger().handlers:
-        handler.setLevel(logging.INFO)
-        
-    if not xiaoan_logger.handlers:
-        sh = logging.StreamHandler()
-        sh.setLevel(logging.INFO)
-        formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-        sh.setFormatter(formatter)
-        xiaoan_logger.addHandler(sh)
-        xiaoan_logger.propagate = False
-    else:
-        for handler in xiaoan_logger.handlers:
-            handler.setLevel(logging.INFO)
-
-    # 前端麦克风接管模式下，后端不再主动开启本地声卡录音，以避免本地回声与硬件冲突。
-    # 所有音频的采集和播放均通过 /voice_ws 由前端接入。
-    print("=" * 50)
-    print("Voice Robot Backend v2.0 — 前端麦克风接管模式")
-    print(f"  默认城市: {DEFAULT_CITY}")
-    print(f"  SSE 端点: /sse")
-    print("=" * 50)
-
-@app.on_event("shutdown")
-async def shutdown_event():
-    pass
 
 if __name__ == "__main__":
-    uvicorn.run("backend.main:app", host="0.0.0.0", port=8765, reload=True, log_level="info")
-# Reload triggered
+    uvicorn.run(
+        "backend.main:app",
+        host="0.0.0.0",
+        port=10850,
+        reload=True,
+        reload_dirs=["backend"],
+        reload_excludes=["logs/*", "*.log", "config/*"],
+        log_level="info"
+    )

@@ -1,0 +1,20 @@
+{
+    "value": "xunfei-realtime",
+    "label": "科大讯飞端到端极速超拟人",
+    "current_voice": "x6_lingxiaoyue_pro",
+    "voice_options": [
+        {
+            "value": "x6_lingxiaoyue_pro",
+            "label": "聆小玥 (超拟人女声)"
+        },
+        {
+            "value": "x6_lingfeiyi_pro",
+            "label": "聆飞逸 (超拟人男声)"
+        }
+    ],
+    "tool_mode": "serial",
+    "voice_speed": 50,
+    "temperature": 0.9,
+    "max_tokens": 512,
+    "vad_silence_duration_ms": 800
+}

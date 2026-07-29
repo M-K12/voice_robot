@@ -35,16 +35,16 @@ class SimpleTTSCallback(QwenTtsRealtimeCallback):
             print("TTS Synthesis completed.")
             self.done_event.set()
 
-def generate_audio(text, output_path):
+def generate_audio(text, output_path, voice_name):
     callback = SimpleTTSCallback()
     tts_client = QwenTtsRealtime(
-        model='qwen3-tts-flash-realtime',
+        model='qwen-tts-realtime',
         callback=callback
     )
     tts_client.connect()
-    tts_client.update_session(voice="Cherry")
+    tts_client.update_session(voice=voice_name)
     
-    print(f"Synthesizing: '{text}'...")
+    print(f"Synthesizing '{text}' with voice {voice_name}...")
     tts_client.append_text(text)
     tts_client.finish()
     
@@ -56,14 +56,29 @@ def generate_audio(text, output_path):
     if len(callback.audio_buffer) > 0:
         output_path = Path(output_path)
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        # 保存为 WAV
+        # 保存为 24000Hz 16-bit 单声道 WAV 文件 (TTS 模型的标准输出格式)
         with wave.open(str(output_path), 'wb') as wf:
             wf.setnchannels(1)
             wf.setsampwidth(2)
             wf.setframerate(24000)
             wf.writeframes(callback.audio_buffer)
         print(f"Saved: {output_path}")
+        return True
+    return False
 
 if __name__ == "__main__":
-    out = "../jinxiangscreen2025/public/audio/wozai.wav"
-    generate_audio("我在", out)
+    if not api_key:
+        print("Error: DASHSCOPE_API_KEY is not set.")
+        exit(1)
+        
+    # 前端配置音色 -> 百炼 TTS 实时模型支持的预置音色
+    voice_map = {
+        "Tina": "Cherry",        # 对应女声
+        "Theo Calm": "Ethan"     # 对应男声 (使用 Dylan 作为 TTS 映射音色)
+    }
+    
+    for local_voice, tts_voice in voice_map.items():
+        out = f"backend/assets/zai_{local_voice}.wav"
+        print(f"\n--- Generating for voice {local_voice} (using TTS voice {tts_voice}) ---")
+        generate_audio("在！", out, tts_voice)
+    print("\nAll voices synthesized successfully.")

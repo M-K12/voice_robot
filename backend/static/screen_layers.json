@@ -1,0 +1,115 @@
+{
+  "_comment": "大屏图层与控制内容配置文件。键为图层英文标识，name为大屏展示的中文名称，keywords为智能匹配关键字列表。",
+  "radar": {
+    "name": "雷达图",
+    "keywords": ["radar", "雷达", "降雨雷达"]
+  },
+  "satellite": {
+    "name": "卫星云图",
+    "keywords": ["satellite", "cloud", "卫星", "云图", "卫星云图"]
+  },
+  "typhoon": {
+    "name": "台风路径",
+    "keywords": ["typhoon", "path", "台风", "台风路径"]
+  },
+  "hail": {
+    "name": "冰雹分布",
+    "keywords": ["hail", "冰雹"]
+  },
+  "lightning": {
+    "name": "闪电监测",
+    "keywords": ["lightning", "闪电", "雷电"]
+  },
+  "flash_flood": {
+    "name": "山洪预警",
+    "keywords": ["flash_flood", "山洪"]
+  },
+  "water_level": {
+    "name": "水位监测",
+    "keywords": ["water_level", "水位"]
+  },
+  "waterlogging": {
+    "name": "积水分布",
+    "keywords": ["waterlogging", "flood", "积水", "积水点", "内涝"]
+  },
+  "aqi": {
+    "name": "空气质量",
+    "keywords": ["aqi", "空气质量"]
+  },
+  "evacuation": {
+    "name": "避险疏散",
+    "keywords": ["evacuation", "避险", "避难", "疏散", "避难所"]
+  },
+  "video_surveillance": {
+    "name": "视频监控",
+    "keywords": ["monitoring", "surveillance", "video", "监控", "摄像头", "视频监控"]
+  },
+  "drone_feed": {
+    "name": "无人机画面",
+    "keywords": ["drone", "uav", "无人机", "航拍"]
+  },
+  "emergency_plan": {
+    "name": "应急预案",
+    "keywords": ["emergency_plan", "应急预案", "预案"]
+  },
+  "fire_passages": {
+    "name": "消防通道",
+    "keywords": ["fire_passages", "消防通道", "消防车道"]
+  },
+  "underground_spaces": {
+    "name": "地下空间",
+    "keywords": ["underground_spaces", "地下空间", "地下室"]
+  },
+  "ebike_parking": {
+    "name": "电瓶车停放点",
+    "keywords": ["ebike_parking", "电瓶车", "电动车"]
+  },
+  "old_houses": {
+    "name": "危旧房分布",
+    "keywords": ["old_houses", "危旧房", "危房"]
+  },
+  "vulnerable_groups": {
+    "name": "弱势群体分布",
+    "keywords": ["vulnerable_groups", "弱势群体", "重点人群"]
+  },
+  "residential_communities": {
+    "name": "住宅小区",
+    "keywords": ["residential_communities", "住宅小区", "小区"]
+  },
+  "dining_shops": {
+    "name": "餐饮商铺",
+    "keywords": ["dining_shops", "餐饮商铺", "商铺", "饭店"]
+  },
+  "schools": {
+    "name": "学校分布",
+    "keywords": ["schools", "学校", "中小学"]
+  },
+  "medical_facilities": {
+    "name": "医疗机构",
+    "keywords": ["medical_facilities", "医疗机构", "医院"]
+  },
+  "cultural_venues": {
+    "name": "文化场所",
+    "keywords": ["cultural_venues", "文化场所", "图书馆", "博物馆"]
+  },
+  "scenic_spots": {
+    "name": "景区分布",
+    "keywords": ["scenic_spots", "景区", "景点"]
+  },
+  "hotels": {
+    "name": "宾馆酒店",
+    "keywords": ["hotels", "宾馆", "酒店"]
+  },
+  "stadiums": {
+    "name": "体育场馆",
+    "keywords": ["stadiums", "场馆", "体育馆"]
+  },
+  "religious_sites": {
+    "name": "宗教场所",
+    "keywords": ["religious_sites", "宗教场所", "寺庙"]
+  },
+  "lifeline": {
+    "name": "城市生命线",
+    "keywords": ["lifeline", "生命线"]
+  }
+}

@@ -1,0 +1,47 @@
+{
+  "_comment": "系统自定义智能匹配词汇映射配置文件",
+  "address_mapping": {
+    "歙县": "歙县",
+    "西唐": "西塘镇",
+    "西糖": "西塘镇",
+    "大运": "大云镇",
+    "窑庄": "姚庄镇",
+    "魏糖": "魏塘街道",
+    "卫唐": "魏塘街道"
+  },
+  "layer_mapping": {
+    "雷达图": "radar",
+    "降雨雷达": "radar",
+    "云图": "satellite",
+    "卫星云图": "satellite",
+    "台风": "typhoon",
+    "台风路径": "typhoon",
+    "积水": "waterlogging",
+    "积水点": "waterlogging",
+    "内涝": "waterlogging",
+    "监控": "video_surveillance",
+    "摄像头": "video_surveillance",
+    "视频监控": "video_surveillance",
+    "无人机": "drone_feed",
+    "航拍": "drone_feed"
+  },
+  "knowledge_category_mapping": {
+    "避灾": "shelters",
+    "避难所": "shelters",
+    "避灾点": "shelters",
+    "救援": "rescue_team",
+    "救援队": "rescue_team",
+    "抢险队": "rescue_team",
+    "物资": "supplies",
+    "物资库": "supplies",
+    "储备库": "supplies",
+    "风险": "risk_point",
+    "隐患": "risk_point",
+    "风险点": "risk_point",
+    "地灾点": "risk_point"
+  },
+  "general_keyword_mapping": {
+    "今日": "今天",
+    "明日": "明天"
+  }
+}

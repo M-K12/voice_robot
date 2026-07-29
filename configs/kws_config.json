@@ -1,0 +1,8 @@
+{
+    "wake_word": "x iǎo ān x iǎo ān :4.0 #0.03 @小安小安\nx iǎo án x iǎo án :3.5 #0.05 @小安小安\nx iāo ān x iāo ān :3.5 #0.05 @小安小安\nx iǎo àn x iǎo àn :3.0 #0.08 @小安小安\nx iǎo a x iǎo ān :2.5 #0.12 @小安小安\nx iǎo ān x iǎo a :2.5 #0.12 @小安小安\nx iǎo a x iǎo a :2.0 #0.18 @小安小安",
+    "sherpa_model_dir": "sherpa/models/sherpa-onnx-kws-zipformer-wenetspeech-3.3M-2024-01-01",
+    "kws_max_active_paths": 8,
+    "kws_num_trailing_blanks": 0,
+    "kws_score": 3.3,
+    "kws_threshold": 0.03
+}

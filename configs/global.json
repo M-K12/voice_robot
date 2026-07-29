@@ -1,0 +1,10 @@
+{
+    "default_city": "成都",
+    "enable_visual_broadcast": true,
+    "local_provider": "cpu",
+    "log_level": "INFO",
+    "log_file_level": "WARNING",
+    "session_idle_timeout_sec": 60,
+    "voiceprint_server_url": "http://8.141.83.146:8777",
+    "backend_url": "http://127.0.0.1:10850"
+}

@@ -1,0 +1,14 @@
+[Unit]
+Description=Xiaoan Voiceprint Cloud Hosting Service
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/voiceprint_server
+ExecStart=/opt/voiceprint_server/venv/bin/python voiceprint_server.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

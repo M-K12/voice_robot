@@ -16,15 +16,15 @@
 
     <!-- 7 天卡片列表 -->
     <div class="daily-list">
-      <div v-for="(d, i) in data.daily.slice(0, 7)" :key="i" class="day-item" :class="{today: i===0}">
+      <div v-for="(d, i) in dailyData.slice(0, 7)" :key="i" class="day-item" :class="{today: i===0}">
         <div class="day-label">{{ shortLabel(d.label) }}</div>
         <div class="day-summary">{{ d.summary }}</div>
       </div>
     </div>
 
     <!-- 8 小时逐时 -->
-    <div v-if="data.hourly && data.hourly.length" class="hourly-scroll">
-      <div v-for="(h, i) in data.hourly.slice(0, 8)" :key="i" class="hour-item">
+    <div v-if="hourlyData && hourlyData.length" class="hourly-scroll">
+      <div v-for="(h, i) in hourlyData.slice(0, 8)" :key="i" class="hour-item">
         <div class="hour-time">{{ h.hour }}</div>
         <div class="hour-summary">{{ h.summary }}</div>
       </div>
@@ -37,13 +37,26 @@ import { computed } from 'vue'
 
 const props = defineProps({
   data: { type: Object, required: true },
-  // data: { city, raw_text, daily:[{label, summary}], hourly:[{hour, summary}] }
 })
 defineEmits(['close'])
 
+const dailyData = computed(() => {
+  if (Array.isArray(props.data.daily)) return props.data.daily
+  if (Array.isArray(props.data.forecast)) {
+    return props.data.forecast.map(f => ({
+      label: f.label || f.condition || '',
+      summary: `${f.label || ''} 高温${f.temp_high ?? ''}℃/低温${f.temp_low ?? ''}℃ ${f.wind_direction || ''}${f.wind_level || ''}`.trim()
+    }))
+  }
+  return []
+})
 
+const hourlyData = computed(() => {
+  if (Array.isArray(props.data.hourly)) return props.data.hourly
+  return []
+})
 
-const today = computed(() => props.data.daily?.[0])
+const today = computed(() => dailyData.value?.[0])
 const todayLabel = computed(() => {
   const s = today.value?.summary || ''
   const m = s.match(/^([^\s]+)\s+/)
@@ -63,6 +76,7 @@ function shortLabel(label) {
   return wm ? wm[1] : label.substring(0, 2)
 }
 </script>
+
 
 <style scoped>
 .weather-card {

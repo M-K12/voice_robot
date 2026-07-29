@@ -1,0 +1,5 @@
+{
+    "value": "offline",
+    "label": "离线识别模式 (SenseVoice/Zipformer)",
+    "asr_mode": "offline"
+}

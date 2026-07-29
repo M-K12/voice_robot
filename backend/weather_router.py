@@ -110,3 +110,33 @@ async def get_weather(city: str = Query(..., description="城市名称，如：�
         return _parse_weather_text(raw, city)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/weather/aqi")
+async def get_weather_aqi(city: str = Query(..., description="城市名称，如：北京")):
+    """获取指定城市的空气质量指数 (AQI)"""
+    from backend.weather_service import weather_service
+    try:
+        aqi_data = await weather_service.get_aqi(city)
+        if not aqi_data:
+            raise HTTPException(status_code=404, detail=f"未获取到 {city} 的 AQI 数据")
+        return {"status": "success", "city": city, "data": aqi_data}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/weather/life_index")
+async def get_weather_life_index(city: str = Query(..., description="城市名称，如：北京")):
+    """获取指定城市的生活指数"""
+    from backend.weather_service import weather_service
+    try:
+        index_data = await weather_service.get_life_index(city)
+        if not index_data:
+            raise HTTPException(status_code=404, detail=f"未获取到 {city} 的生活指数数据")
+        return {"status": "success", "city": city, "data": index_data}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

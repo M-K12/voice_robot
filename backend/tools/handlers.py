@@ -416,16 +416,18 @@ async def execute_tool(name: str, arguments_str: str, ctx: ToolContext) -> str:
             return json.dumps(result_content, ensure_ascii=False)
 
         elif name == "hangup":
-            if ctx.websocket: await ctx.websocket.send_json({"type": "hangup"})
-            ctx.session_active = False
-            
             try:
                 from backend.main import visual_broadcast_manager
-                import asyncio
-                asyncio.create_task(visual_broadcast_manager.broadcast({"type": "interrupted"}))
-                asyncio.create_task(visual_broadcast_manager.broadcast({"type": "state_change", "state": "idle"}))
-            except Exception as e:
-                logger.error(f"[Handlers] Broadcast hangup to visual failed: {e}")
+            except Exception:
+                visual_broadcast_manager = None
+
+            from backend.utils import send_session_hangup
+            await send_session_hangup(
+                websocket=ctx.websocket,
+                visual_broadcast_manager=visual_broadcast_manager,
+                reason="模型触发 hangup 工具挂断会话"
+            )
+            ctx.session_active = False
                 
             result_content = {"status": "success"}
             logger.info(f"[Tool Result] hangup -> Result: {json.dumps(result_content, ensure_ascii=False)}")

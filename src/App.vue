@@ -263,11 +263,12 @@
                 </div>
 
                 <div class="form-group">
-                  <div style="display: flex; justify-content: space-between; align-items: center;">
-                    <label class="form-label">VAD 静音断句判定时长: {{ settings.e2eSilenceDurationMs }}ms</label>
-                  </div>
-                  <input type="range" v-model.number="settings.e2eSilenceDurationMs" min="300" max="2000" step="50" style="width: 100%; accent-color: #00e5ff; height: 6px; border-radius: 3px; background: rgba(255,255,255,0.1); cursor: pointer;" />
-                  <span class="form-help">静音多少毫秒后自动判定您说话结束并开始回应（越短反应越敏捷，防插嘴可调长）。</span>
+                  <label class="form-label">AI 播报打断拦截模式</label>
+                  <select v-model="settings.interruptionMode" class="form-select">
+                    <option value="wake_word_only">wake_word_only (仅唤醒词打断 - 推荐)</option>
+                    <option value="any_speech">any_speech (任意说话即打断 - 全双工)</option>
+                  </select>
+                  <span class="form-help">控制小安正在回答/播放音频时的打断策略。“仅唤醒词打断”模式下普通杂音/说话自动切至端侧 KWS，避免打断，喊出唤醒词后瞬间截断打断。</span>
                 </div>
                 
                 <!-- Qwen-Audio 3.0 Realtime 专属配置块 -->
@@ -526,14 +527,7 @@
                 </div>
               </template>
 
-              <div class="form-group">
-                <label class="form-label">语音工具调用执行模式</label>
-                <div class="radio-group">
-                  <label class="radio-label"><input type="radio" v-model="settings.voiceModelToolMode" value="parallel" /> 并行 (parallel)</label>
-                  <label class="radio-label"><input type="radio" v-model="settings.voiceModelToolMode" value="serial" /> 串行 (serial)</label>
-                </div>
-                <span class="form-help">控制全双工通话时多指令排队串行（加锁）或并发（无锁）。</span>
-              </div>
+
             </fieldset>
           </div>
         </div>
@@ -1306,14 +1300,7 @@
                     </div>
                   </template>
 
-                  <div class="form-group">
-                    <label class="form-label">语音工具调用执行模式</label>
-                    <div class="radio-group">
-                      <label class="radio-label"><input type="radio" v-model="settings.voiceModelToolMode" value="parallel" /> 并行 (parallel)</label>
-                      <label class="radio-label"><input type="radio" v-model="settings.voiceModelToolMode" value="serial" /> 串行 (serial)</label>
-                    </div>
-                    <span class="form-help">控制全双工通话时多指令排队串行（加锁）或并发（无锁）。</span>
-                  </div>
+
                 </fieldset>
               </div>
             </div>
@@ -1684,6 +1671,7 @@ const settings = reactive({
   qwenAudioVoiceprintMode: 'static',
   selectedVoiceprintId: 'Ming',
   streamAsrEnabled: true,
+  interruptionMode: 'wake_word_only',
   voiceprintServerUrl: 'http://8.141.83.146:8777'
 })
 
@@ -2377,7 +2365,13 @@ async function startVoiceCall() {
         // 1. 计算当前数据块的 RMS 有效音频能量
         const rms = Math.sqrt(buf.reduce((s, v) => s + v * v, 0) / buf.length)
         
-        // 2. 将采集到的所有音频无条件发送给后端进行 ASR/VAD 处理，防止静音断流导致后端 VAD 判定死锁
+        // 2. 在仅唤醒词打断模式下，当 AI 正在播放回答时，麦克风流切至端侧 KWS，不发往云端/后端
+        const isWakeWordOnly = settings.interruptionMode === 'wake_word_only'
+        if (isWakeWordOnly && isPlaying.value) {
+          visualizerVolume.value = 1.0 + rms * 20
+          return
+        }
+
         if (voiceWs && voiceWs.readyState === WebSocket.OPEN) {
           voiceWs.send(float32ToPcm16WithPrefix(buf))
         }
@@ -2549,6 +2543,12 @@ async function startVoiceCall() {
           } else if (msg.type === 'weather_data') {
             weatherData.value = msg.data
             scrollToBottom()
+          } else if (msg.type === 'user_info_update') {
+            console.log('[voice_ws] 收到用户信息实时更新:', msg)
+            if (msg.city) {
+              settings.defaultCity = msg.city
+            }
+            scrollToBottom()
             } else if (msg.type === 'state_change') {
               const state = msg.state
               console.log('[voice_ws] State Change ->', state)
@@ -2570,11 +2570,10 @@ async function startVoiceCall() {
                 isPlaying.value = false
               }
             } else if (msg.type === 'hangup') {
-              // 收到挂断信号，延迟一点点让语音播完（如果有的话）
               console.log('[voice_ws] Received hangup signal')
-              setTimeout(() => {
+              playExitAck(() => {
                 endVoiceCall()
-              }, 1500)
+              })
             }
         } catch (e) {
           console.warn('[voice_ws] 文本消息解析失败', e)
@@ -2629,9 +2628,9 @@ function onKwsDebug(msg) {
   console.log('[KWS Debug]', msg)
 }
 
-// 唤醒后固定语音回答"在"（播放当前语音模型生成的 zai.wav）
+// 唤醒后固定语音回答"在"（播放 zai_female.wav）
 function playWakeAck(callback) {
-  const audioUrl = settings.backendUrl + "/audio/zai.wav?voice=" + encodeURIComponent(settings.voice)
+  const audioUrl = settings.backendUrl + "/assets/zai_female.wav"
   const audio = new Audio(audioUrl)
   
   let called = false
@@ -2653,6 +2652,41 @@ function playWakeAck(callback) {
   
   audio.play().catch((err) => {
     console.warn('[KWS Audio Playback] 浏览器拦截或无法播放:', err)
+    done()
+  })
+}
+// 退出前打印文字“再见”并播放 exit_female.wav
+function playExitAck(callback) {
+  messages.value.push({
+    id: 'exit-' + Date.now(),
+    role: 'assistant',
+    content: '再见',
+    isFinal: true,
+    isVoiceWs: true
+  })
+  scrollToBottom()
+
+  const audioUrl = settings.backendUrl + "/assets/exit_female.wav"
+  const audio = new Audio(audioUrl)
+  
+  let called = false
+  const done = () => {
+    if (!called) {
+      called = true
+      if (callback) callback()
+    }
+  }
+  
+  audio.onended = done
+  audio.onerror = (err) => {
+    console.warn('[Exit Audio Playback] 退出音频加载或播放失败:', err)
+    done()
+  }
+  
+  setTimeout(done, 2000)
+  
+  audio.play().catch((err) => {
+    console.warn('[Exit Audio Playback] 浏览器播放被拦截或播放失败:', err)
     done()
   })
 }
@@ -2762,6 +2796,19 @@ function onMicError(errMsg) {
 function onMicRecovered() {
   console.log('[App] 麦克风已恢复')
   micDisabled.value = false
+}
+
+function fetchVoices(modelName) {
+  if (!modelName) return
+  const options = defaultVoiceOptionsMap[modelName] || []
+  if (options && Array.isArray(options) && options.length > 0) {
+    voiceOptions.value = [...options]
+    if (!options.some(opt => opt.value === settings.voice)) {
+      settings.voice = options[0].value
+    }
+  } else {
+    voiceOptions.value = []
+  }
 }
 
 // ── 从本地磁盘配置文件直接读取配置（不依赖后端是否在线）
@@ -2987,18 +3034,7 @@ onMounted(async () => {
     }
   })
 
-function fetchVoices(modelName) {
-  if (!modelName) return
-  const options = defaultVoiceOptionsMap[modelName] || []
-  if (options && Array.isArray(options) && options.length > 0) {
-    voiceOptions.value = [...options]
-    if (!options.some(opt => opt.value === settings.voice)) {
-      settings.voice = options[0].value
-    }
-  } else {
-    voiceOptions.value = []
-  }
-}
+
 
 
 

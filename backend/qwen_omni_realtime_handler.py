@@ -21,7 +21,7 @@ import websockets
 from fastapi import WebSocket, WebSocketDisconnect
 from starlette.websockets import WebSocketState
 
-from backend.utils import normalize_tool_name
+from backend.utils import normalize_tool_name, is_exit_intent, is_wake_word, send_session_hangup
 from backend.tools import GLOBAL_TOOLS_SCHEMA, get_instructions, ToolContext, execute_tool
 
 logger = logging.getLogger("xiaoan.qwen_omni")
@@ -116,7 +116,7 @@ class QwenOmniRealtimeClient:
             open_timeout=30,
             ping_interval=20,
             ping_timeout=20,
-            close_timeout=10,
+            close_timeout=1,
         )
 
         # 构建会话初始配置
@@ -365,9 +365,11 @@ async def handle_qwen_omni_realtime_session(
             return
         hangup_sent = True
         session_active = False
-        await _send_safe({"type": "hangup"})
-        await visual_broadcast_manager.broadcast({"type": "interrupted"})
-        await visual_broadcast_manager.broadcast({"type": "state_change", "state": "idle"})
+        await send_session_hangup(
+            websocket=websocket,
+            visual_broadcast_manager=visual_broadcast_manager,
+            client=client
+        )
 
     def on_interrupt():
         nonlocal audio_active, expecting_weather_summary, speech_start_time
@@ -388,14 +390,12 @@ async def handle_qwen_omni_realtime_session(
         if not text.strip() or not session_active or hangup_sent:
             return
 
-        exit_keywords = ["退下", "去休息吧", "退出", "挂断", "再见", "拜拜", "别说了", "闭嘴", "滚蛋"]
-        if is_final and any(kw in text for kw in exit_keywords):
+        if is_final and is_exit_intent(text):
             logger.info(f"[QwenOmni] 退出指令 '{text}'")
             await _send_hangup()
             return
 
-        wake_words = ["小安小安", "小安小安。", "小安", "小安。"]
-        if is_final and text.strip() in wake_words:
+        if is_final and is_wake_word(text):
             logger.info(f"⚡ [QwenOmni ASR 唤醒打断] 捕获到单句唤醒词 '{text}'，立刻打断并重置为倾听状态！")
             on_interrupt()
             if client:
@@ -599,8 +599,8 @@ async def handle_qwen_omni_realtime_session(
                     logger.warning(f"[QwenOmni] JSON parse error: {e}")
 
         msg_task.cancel()
-    except WebSocketDisconnect:
-        logger.info("[QwenOmni] 前端 WebSocket 连接切断")
+    except (WebSocketDisconnect, websockets.exceptions.ConnectionClosed):
+        logger.info("[QwenOmni] 前端 WebSocket 连接正常切断")
     except Exception as e:
         logger.error(f"[QwenOmni] 会话运行异常: {e}")
     finally:

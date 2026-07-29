@@ -1,0 +1,403 @@
+2026-07-28 10:23:02,034 - root - INFO - [System Logging] 日志初始化完成 -> 后端日志: D:\projects\xiaoan\voice_robot\logs\backend\backend.log | 前端日志: D:\projects\xiaoan\voice_robot\logs\frontend\frontend.log (按天切割，保留60天)
+2026-07-28 10:23:02,035 - root - INFO - ==================================================
+2026-07-28 10:23:02,035 - root - INFO - Voice Robot Backend v2.0 — 前端麦克风接管模式
+2026-07-28 10:23:02,035 - root - INFO -   默认城市: 成都
+2026-07-28 10:23:02,035 - root - INFO -   SSE 端点: /sse
+2026-07-28 10:23:02,035 - root - INFO - ==================================================
+2026-07-28 10:23:09,446 - root - INFO - [System Logging] 日志初始化完成 -> 后端日志: D:\projects\xiaoan\voice_robot\logs\backend\backend.log | 前端日志: D:\projects\xiaoan\voice_robot\logs\frontend\frontend.log (按天切割，保留60天)
+2026-07-28 10:23:09,446 - root - INFO - ==================================================
+2026-07-28 10:23:09,446 - root - INFO - Voice Robot Backend v2.0 — 前端麦克风接管模式
+2026-07-28 10:23:09,446 - root - INFO -   默认城市: 成都
+2026-07-28 10:23:09,446 - root - INFO -   SSE 端点: /sse
+2026-07-28 10:23:09,446 - root - INFO - ==================================================
+2026-07-28 10:23:27,000 - root - INFO - [System Logging] 日志初始化完成 -> 后端日志: D:\projects\xiaoan\voice_robot\logs\backend\backend.log | 前端日志: D:\projects\xiaoan\voice_robot\logs\frontend\frontend.log (按天切割，保留60天)
+2026-07-28 10:23:27,000 - root - INFO - ==================================================
+2026-07-28 10:23:27,000 - root - INFO - Voice Robot Backend v2.0 — 前端麦克风接管模式
+2026-07-28 10:23:27,000 - root - INFO -   默认城市: 成都
+2026-07-28 10:23:27,001 - root - INFO -   SSE 端点: /sse
+2026-07-28 10:23:27,001 - root - INFO - ==================================================
+2026-07-28 10:23:36,659 - root - INFO - [System Logging] 日志初始化完成 -> 后端日志: D:\projects\xiaoan\voice_robot\logs\backend\backend.log | 前端日志: D:\projects\xiaoan\voice_robot\logs\frontend\frontend.log (按天切割，保留60天)
+2026-07-28 10:23:36,659 - root - INFO - ==================================================
+2026-07-28 10:23:36,659 - root - INFO - Voice Robot Backend v2.0 — 前端麦克风接管模式
+2026-07-28 10:23:36,660 - root - INFO -   默认城市: 成都
+2026-07-28 10:23:36,660 - root - INFO -   SSE 端点: /sse
+2026-07-28 10:23:36,660 - root - INFO - ==================================================
+2026-07-28 10:23:48,754 - root - INFO - [System Logging] 日志初始化完成 -> 后端日志: D:\projects\xiaoan\voice_robot\logs\backend\backend.log | 前端日志: D:\projects\xiaoan\voice_robot\logs\frontend\frontend.log (按天切割，保留60天)
+2026-07-28 10:23:48,754 - root - INFO - ==================================================
+2026-07-28 10:23:48,754 - root - INFO - Voice Robot Backend v2.0 — 前端麦克风接管模式
+2026-07-28 10:23:48,754 - root - INFO -   默认城市: 成都
+2026-07-28 10:23:48,754 - root - INFO -   SSE 端点: /sse
+2026-07-28 10:23:48,754 - root - INFO - ==================================================
+2026-07-28 10:23:56,763 - root - INFO - [System Logging] 日志初始化完成 -> 后端日志: D:\projects\xiaoan\voice_robot\logs\backend\backend.log | 前端日志: D:\projects\xiaoan\voice_robot\logs\frontend\frontend.log (按天切割，保留60天)
+2026-07-28 10:23:56,764 - root - INFO - ==================================================
+2026-07-28 10:23:56,764 - root - INFO - Voice Robot Backend v2.0 — 前端麦克风接管模式
+2026-07-28 10:23:56,764 - root - INFO -   默认城市: 成都
+2026-07-28 10:23:56,764 - root - INFO -   SSE 端点: /sse
+2026-07-28 10:23:56,764 - root - INFO - ==================================================
+2026-07-28 10:24:04,446 - root - INFO - [System Logging] 日志初始化完成 -> 后端日志: D:\projects\xiaoan\voice_robot\logs\backend\backend.log | 前端日志: D:\projects\xiaoan\voice_robot\logs\frontend\frontend.log (按天切割，保留60天)
+2026-07-28 10:24:04,446 - root - INFO - ==================================================
+2026-07-28 10:24:04,446 - root - INFO - Voice Robot Backend v2.0 — 前端麦克风接管模式
+2026-07-28 10:24:04,447 - root - INFO -   默认城市: 成都
+2026-07-28 10:24:04,447 - root - INFO -   SSE 端点: /sse
+2026-07-28 10:24:04,447 - root - INFO - ==================================================
+2026-07-28 10:24:16,559 - root - INFO - [System Logging] 日志初始化完成 -> 后端日志: D:\projects\xiaoan\voice_robot\logs\backend\backend.log | 前端日志: D:\projects\xiaoan\voice_robot\logs\frontend\frontend.log (按天切割，保留60天)
+2026-07-28 10:24:16,559 - root - INFO - ==================================================
+2026-07-28 10:24:16,559 - root - INFO - Voice Robot Backend v2.0 — 前端麦克风接管模式
+2026-07-28 10:24:16,560 - root - INFO -   默认城市: 成都
+2026-07-28 10:24:16,560 - root - INFO -   SSE 端点: /sse
+2026-07-28 10:24:16,560 - root - INFO - ==================================================
+2026-07-28 10:24:23,408 - root - INFO - [System Logging] 日志初始化完成 -> 后端日志: D:\projects\xiaoan\voice_robot\logs\backend\backend.log | 前端日志: D:\projects\xiaoan\voice_robot\logs\frontend\frontend.log (按天切割，保留60天)
+2026-07-28 10:24:23,408 - root - INFO - ==================================================
+2026-07-28 10:24:23,409 - root - INFO - Voice Robot Backend v2.0 — 前端麦克风接管模式
+2026-07-28 10:24:23,409 - root - INFO -   默认城市: 成都
+2026-07-28 10:24:23,409 - root - INFO -   SSE 端点: /sse
+2026-07-28 10:24:23,409 - root - INFO - ==================================================
+2026-07-28 10:24:29,849 - root - INFO - [System Logging] 日志初始化完成 -> 后端日志: D:\projects\xiaoan\voice_robot\logs\backend\backend.log | 前端日志: D:\projects\xiaoan\voice_robot\logs\frontend\frontend.log (按天切割，保留60天)
+2026-07-28 10:24:29,849 - root - INFO - ==================================================
+2026-07-28 10:24:29,849 - root - INFO - Voice Robot Backend v2.0 — 前端麦克风接管模式
+2026-07-28 10:24:29,849 - root - INFO -   默认城市: 成都
+2026-07-28 10:24:29,849 - root - INFO -   SSE 端点: /sse
+2026-07-28 10:24:29,849 - root - INFO - ==================================================
+2026-07-28 10:24:36,211 - root - INFO - [System Logging] 日志初始化完成 -> 后端日志: D:\projects\xiaoan\voice_robot\logs\backend\backend.log | 前端日志: D:\projects\xiaoan\voice_robot\logs\frontend\frontend.log (按天切割，保留60天)
+2026-07-28 10:24:36,211 - root - INFO - ==================================================
+2026-07-28 10:24:36,211 - root - INFO - Voice Robot Backend v2.0 — 前端麦克风接管模式
+2026-07-28 10:24:36,212 - root - INFO -   默认城市: 成都
+2026-07-28 10:24:36,212 - root - INFO -   SSE 端点: /sse
+2026-07-28 10:24:36,212 - root - INFO - ==================================================
+2026-07-28 10:25:00,958 - root - INFO - [System Logging] 日志初始化完成 -> 后端日志: D:\projects\xiaoan\voice_robot\logs\backend\backend.log | 前端日志: D:\projects\xiaoan\voice_robot\logs\frontend\frontend.log (按天切割，保留60天)
+2026-07-28 10:25:00,958 - root - INFO - ==================================================
+2026-07-28 10:25:00,958 - root - INFO - Voice Robot Backend v2.0 — 前端麦克风接管模式
+2026-07-28 10:25:00,959 - root - INFO -   默认城市: 成都
+2026-07-28 10:25:00,959 - root - INFO -   SSE 端点: /sse
+2026-07-28 10:25:00,959 - root - INFO - ==================================================
+2026-07-28 10:25:08,105 - root - INFO - [System Logging] 日志初始化完成 -> 后端日志: D:\projects\xiaoan\voice_robot\logs\backend\backend.log | 前端日志: D:\projects\xiaoan\voice_robot\logs\frontend\frontend.log (按天切割，保留60天)
+2026-07-28 10:25:08,106 - root - INFO - ==================================================
+2026-07-28 10:25:08,106 - root - INFO - Voice Robot Backend v2.0 — 前端麦克风接管模式
+2026-07-28 10:25:08,106 - root - INFO -   默认城市: 成都
+2026-07-28 10:25:08,106 - root - INFO -   SSE 端点: /sse
+2026-07-28 10:25:08,106 - root - INFO - ==================================================
+2026-07-28 10:25:35,708 - root - INFO - [System Logging] 日志初始化完成 -> 后端日志: D:\projects\xiaoan\voice_robot\logs\backend\backend.log | 前端日志: D:\projects\xiaoan\voice_robot\logs\frontend\frontend.log (按天切割，保留60天)
+2026-07-28 10:25:37,093 - xiaoan.weather - INFO - [WeatherService] 供应商切换: moji, 供应商数量: 1
+2026-07-28 10:25:37,803 - xiaoan.weather - INFO - [WeatherService] 供应商切换: moji, 供应商数量: 1
+2026-07-28 10:25:37,807 - xiaoan.handlers - INFO - [Tool Call] 🔨 get_weather_forecast -> 参数: {"location_name": "成都", "date": "2026-07-29", "days": 1, "query_types": ["forecast"]}
+2026-07-28 10:25:37,807 - xiaoan.amap - INFO - 正在尝试使用 [高德POI] 查询地点: 成都 ...
+2026-07-28 10:25:38,113 - xiaoan.amap - INFO - [高德POI] 命中: 四川省成都市 => (104.066301, 30.572961)
+2026-07-28 10:25:38,113 - xiaoan.handlers - INFO - [Result] 高德地图 POI 解析成功: location='四川省成都市', lng=104.066301, lat=30.572961
+2026-07-28 10:25:38,436 - xiaoan.handlers - INFO - [Operation] 调用 get_weather 天气服务: city='四川省成都市', date='2026-07-29', date_end='', days=1, lon=104.066301, lat=30.572961
+2026-07-28 10:25:38,436 - xiaoan.handlers - ERROR - [execute_tool Exception] MojiProvider.get_weather() got an unexpected keyword argument 'lon'
+Traceback (most recent call last):
+  File "D:\projects\xiaoan\voice_robot\backend\tools\handlers.py", line 163, in execute_tool
+    weather_data = await weather_service.get_weather(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\projects\xiaoan\voice_robot\backend\weather_service.py", line 586, in get_weather
+    result = await provider.get_weather(city, date, days, query_types, date_end=date_end, lon=real_lon, lat=real_lat)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: MojiProvider.get_weather() got an unexpected keyword argument 'lon'
+
+2026-07-28 10:25:58,738 - root - INFO - [System Logging] 日志初始化完成 -> 后端日志: D:\projects\xiaoan\voice_robot\logs\backend\backend.log | 前端日志: D:\projects\xiaoan\voice_robot\logs\frontend\frontend.log (按天切割，保留60天)
+2026-07-28 10:25:58,738 - root - INFO - ==================================================
+2026-07-28 10:25:58,738 - root - INFO - Voice Robot Backend v2.0 — 前端麦克风接管模式
+2026-07-28 10:25:58,738 - root - INFO -   默认城市: 成都
+2026-07-28 10:25:58,738 - root - INFO -   SSE 端点: /sse
+2026-07-28 10:25:58,738 - root - INFO - ==================================================
+2026-07-28 10:26:05,620 - root - INFO - [System Logging] 日志初始化完成 -> 后端日志: D:\projects\xiaoan\voice_robot\logs\backend\backend.log | 前端日志: D:\projects\xiaoan\voice_robot\logs\frontend\frontend.log (按天切割，保留60天)
+2026-07-28 10:26:05,620 - root - INFO - ==================================================
+2026-07-28 10:26:05,620 - root - INFO - Voice Robot Backend v2.0 — 前端麦克风接管模式
+2026-07-28 10:26:05,620 - root - INFO -   默认城市: 成都
+2026-07-28 10:26:05,620 - root - INFO -   SSE 端点: /sse
+2026-07-28 10:26:05,620 - root - INFO - ==================================================
+2026-07-28 10:26:09,338 - root - INFO - [System Logging] 日志初始化完成 -> 后端日志: D:\projects\xiaoan\voice_robot\logs\backend\backend.log | 前端日志: D:\projects\xiaoan\voice_robot\logs\frontend\frontend.log (按天切割，保留60天)
+2026-07-28 10:26:10,715 - xiaoan.weather - INFO - [WeatherService] 供应商切换: moji, 供应商数量: 1
+2026-07-28 10:26:11,425 - xiaoan.weather - INFO - [WeatherService] 供应商切换: moji, 供应商数量: 1
+2026-07-28 10:26:11,429 - xiaoan.handlers - INFO - [Tool Call] 🔨 get_weather_forecast -> 参数: {"location_name": "成都", "date": "2026-07-29", "days": 1, "query_types": ["forecast"]}
+2026-07-28 10:26:11,430 - xiaoan.amap - INFO - 正在尝试使用 [高德POI] 查询地点: 成都 ...
+2026-07-28 10:26:11,730 - xiaoan.amap - INFO - [高德POI] 命中: 四川省成都市 => (104.066301, 30.572961)
+2026-07-28 10:26:11,730 - xiaoan.handlers - INFO - [Result] 高德地图 POI 解析成功: location='四川省成都市', lng=104.066301, lat=30.572961
+2026-07-28 10:26:12,032 - xiaoan.handlers - INFO - [Operation] 调用 get_weather 天气服务: city='四川省成都市', date='2026-07-29', date_end='', days=1, lon=104.066301, lat=30.572961
+2026-07-28 10:26:12,032 - xiaoan.weather - INFO - 正在尝试使用 [墨迹天气] 联网查询 四川省成都市 的真实天气...
+2026-07-28 10:26:12,032 - xiaoan.weather - INFO - [墨迹天气] Amap Geocoding 命中: 四川省成都市 (104.066301, 30.572961)
+2026-07-28 10:26:12,038 - xiaoan.moji - INFO - [API Call] 墨迹天气-天气预报 -> POST https://aliv8.data.moji.com/whapi/json/aliweather/forecast15days | 参数: {"lat": "30.572961", "lon": "104.066301", "token": "7538f7246218bdbf795b329ab09cc524"}
+2026-07-28 10:26:12,218 - xiaoan.moji - INFO - [API Response] 天气预报返回: {"code": 0, "data": {"city": {"cityId": 3363, "counname": "中国", "ianatimezone": "Asia/Shanghai", "name": "天堂岛海洋乐园", "pname": "四川省", "secondaryname": "成都市", "timezone": "8"}, "forecast": [{"conditionDay": "雷阵雨", "conditionIdDay": "4", "conditionIdNight": "4", "conditionNight": "雷阵雨", "humidity": "84", "moonphase": "WaxingGibbous", "moonrise": "2026-07-27 18:41:00", "moonset": "2026-07-27 03:44:00", "pop": "80", "predictDate": "2026-07-27", "qpf": "11.4", "sunrise": "2026-07-27 06:19:00", "sunset": "2026-07-27 20:02:00", "tempDay": "29", "tempNight": "24", "updatetime": "2026-07-27 21:24:00", "uvi": "4", "windDegreesDay": "0", "windDegreesNight": "45", "windDirDay": "北风", "windDirNight": "东北风", "windLevelDay": "2", "windLevelNight": "1", "windSpeedDay": "2.4", "windSpeedNight": "0.9"}, {"conditionDay": "阵雨", "conditionIdDay": "3", "conditionIdNight": "4", "conditionNight": "雷阵雨", "humidity": "86", "moonphase": "WaxingGibbous", "moonrise": "2026-07-28 19:24:00", "moonset": "2026-07-28 04:40:00", "pop": "80", "predictDate": "2026-07-28", "qpf": "8.9", "sunrise": "2026-07-28 06:19:00", "sunset": "2026-07-28 20:01:00", "tempDay": "30", "tempNight": "23", "updatetime": "2026-07-28 06:08:20", "uvi": "4", "windDegreesDay": "0", "windDegreesNight": "45", "windDirDay": "北风", "windDirNight": "东北风", "windLevelDay": "1", "windLevelNight": "1", "windSpeedDay": "0.9", "windSpeedNight": "0.9"}, {"conditionDay": "雷阵雨", "conditionIdDay": "4", "conditionIdNight": "4", "conditionNight": "雷阵雨", "humidity": "88", "moonphase": "Full", "moonrise": "2026-07-29 20:02:00", "moonset": "2026-07-29 05:39:00", "pop": "80", "predictDate": "2026-07-29", "qpf": "18.0", "sunrise": "2026-07-29 06:20:00", "sunset": "2026-07-29 20:01:00", "tempDay": "30", "tempNight": "24", "updatetime": "2026-07-28 06:08:20", "uvi": "4", "windDegreesDay": "45", "windDegreesNight": "45", "windDirDay": "东北风", "windDirNight": "东北风", "windLevelDay": "2", "windLevelNight": "2", "windSpeedDay": "2.4", "windSpeedNight": "2.4"}, {"conditionDay": "雷阵雨", "conditionIdDay": "4", "conditionIdNight": "4", "conditionNight": "雷阵雨", "humidity": "92", "moonphase": "WaningGibbous", "moonrise": "2026-07-30 20:35:00", "moonset": "2026-07-30 06:38:00", "pop": "80", "predictDate": "2026-07-30", "qpf": "12.3", "sunrise": "2026-07-30 06:20:00", "sunset": "2026-07-30 20:00:00", "tempDay": "29", "tempNight": "24", "updatetime": "2026-07-28 06:08:20", "uvi": "2", "windDegreesDay": "45", "windDegreesNight": "45", "windDirDay": "东北风", "windDirNight": "东北风", "windLevelDay": "2", "windLevelNight": "2", "windSpeedDay": "2.4", "windSpeedNight": "2.4"}, {"conditionDay": "雷阵雨", "conditionIdDay": "4", "conditionIdNight": "4", "conditionNight": "雷阵雨", "humidity": "91", "moonphase": "WaningGibbous", "moonrise": "2026-07-31 21:05:00", "moonset": "2026-07-31 07:36:00", "pop": "80", "predictDate": "2026-07-31", "qpf": "12.3", "sunrise": "2026-07-31 06:21:00", "sunset": "2026-07-31 19:59:00", "tempDay": "29", "tempNight": "23", "updatetime": "2026-07-28 06:08:20", "uvi": "2", "windDegreesDay": "45", "windDegreesNight": "45", "windDirDay": "东北风", "windDirNight": "东北风", "windLevelDay": "3", "windLevelNight": "3", "windSpeedDay": "4.4", "windSpeedNight": "4.4"}, {"conditionDay": "阵雨", "conditionIdDay": "3", "conditionIdNight": "33", "conditionNight": "阵雨", "humidity": "90", "moonphase": "WaningGibbous", "moonrise": "2026-08-01 21:34:00", "moonset": "2026-08-01 08:35:00", "pop": "60", "predictDate": "2026-08-01", "qpf": "5.4", "sunrise": "2026-08-01 06:22:00", "sunset": "2026-08-01 19:59:00", "tempDay": "28", "tempNight": "23", "updatetime": "2026-07-28 06:08:20", "uvi": "3", "windDegreesDay": "45", "windDegreesNight": "45", "windDirDay": "东北风", "windDirNight": "东北风", "windLevelDay": "3", "windLevelNight": "2", "windSpeedDay": "4.4", "windSpeedNight": "2.4"}, {"conditionDay": "阵雨", "conditionIdDay": "3", "conditionIdNight": "33", "conditionNight": "阵雨", "humidity": "85", "moonphase": "WaningGibbous", "moonrise": "2026-08-02 22:02:00", "moonset": "2026-08-02 09:33:00", "pop": "60", "predictDate": "2026-08-02", "qpf": "5.4", "sunrise": "2026-08-02 06:22:00", "sunset": "2026-08-02 19:58:00", "tempDay": "30", "tempNight": "23", "updatetime": "2026-07-28 06:08:20", "uvi": "4", "windDegreesDay": "45", "windDegreesNight": "45", "windDirDay": "东北风", "windDirNight": "东北风", "windLevelDay": "2", "windLevelNight": "2", "windSpeedDay": "2.4", "windSpeedNight": "2.4"}, {"conditionDay": "阴", "conditionIdDay": "2", "conditionIdNight": "2", "conditionNight": "阴", "humidity": "81", "moonphase": "WaningGibbous", "moonrise": "2026-08-03 22:30:00", "moonset": "2026-08-03 10:31:00", "pop": "0", "predictDate": "2026-08-03", "qpf": "0.0", "sunrise": "2026-08-03 06:23:00", "sunset": "2026-08-03 19:57:00", "tempDay": "32", "tempNight": "24", "updatetime": "2026-07-28 06:08:20", "uvi": "4", "windDegreesDay": "225", "windDegreesNight": "225", "windDirDay": "西南风", "windDirNight": "西南风", "windLevelDay": "2", "windLevelNight": "2", "windSpeedDay": "2.4", "windSpeedNight": "2.4"}, {"conditionDay": "阴", "conditionIdDay": "2", "conditionIdNight": "2", "conditionNight": "阴", "humidity": "80", "moonphase": "WaningGibbous", "moonrise": "2026-08-04 23:01:00", "moonset": "2026-08-04 11:32:00", "pop": "0", "predictDate": "2026-08-04", "qpf": "0.0", "sunrise": "2026-08-04 06:24:00", "sunset": "2026-08-04 19:56:00", "tempDay": "32", "tempNight": "24", "updatetime": "2026-07-28 06:08:20", "uvi": "5", "windDegreesDay": "135", "windDegreesNight": "225", "windDirDay": "东南风", "windDirNight": "西南风", "windLevelDay": "2", "windLevelNight": "2", "windSpeedDay": "2.4", "windSpeedNight": "2.4"}, {"conditionDay": "阴", "conditionIdDay": "2", "conditionIdNight": "33", "conditionNight": "阵雨", "humidity": "80", "moonphase": "WaningGibbous", "moonrise": "2026-08-05 23:36:00", "moonset": "2026-08-05 12:35:00", "pop": "80", "predictDate": "2026-08-05", "qpf": "3.0", "sunrise": "2026-08-05 06:24:00", "sunset": "2026-08-05 19:55:00", "tempDay": "33", "tempNight": "24", "updatetime": "2026-07-28 06:08:20", "uvi": "5", "windDegreesDay": "135", "windDegreesNight": "135", "windDirDay": "东南风", "windDirNight": "东南风", "windLevelDay": "2", "windLevelNight": "2", "windSpeedDay": "2.4", "windSpeedNight": "2.4"}, {"conditionDay": "阵雨", "conditionIdDay": "3", "conditionIdNight": "2", "conditionNight": "阴", "humidity": "81", "moonphase": "Last", "moonrise": "2026-08-06 00:00:00", "moonset": "2026-08-06 13:42:00", "pop": "60", "predictDate": "2026-08-06", "qpf": "4.3", "sunrise": "2026-08-06 06:25:00", "sunset": "2026-08-06 19:55:00", "tempDay": "32", "tempNight": "24", "updatetime": "2026-07-28 06:08:20", "uvi": "5", "windDegreesDay": "225", "windDegreesNight": "225", "windDirDay": "西南风", "windDirNight": "西南风", "windLevelDay": "2", "windLevelNight": "2", "windSpeedDay": "2.4", "windSpeedNight": "2.4"}, {"conditionDay": "阵雨", "conditionIdDay": "3", "conditionIdNight": "2", "conditionNight": "阴", "humidity": "80", "moonphase": "WaningCrescent", "moonrise": "2026-08-07 00:17:00", "moonset": "2026-08-07 14:51:00", "pop": "60", "predictDate": "2026-08-07", "qpf": "1.8", "sunrise": "2026-08-07 06:25:00", "sunset": "2026-08-07 19:54:00", "tempDay": "32", "tempNight": "24", "updatetime": "2026-07-28 06:08:20", "uvi": "6", "windDegreesDay": "45", "windDegreesNight": "45", "windDirDay": "东北风", "windDirNight": "东北风", "windLevelDay": "2", "windLevelNight": "2", "windSpeedDay": "2.4", "windSpeedNight": "2.4"}, {"conditionDay": "少云", "conditionIdDay": "1", "conditionIdNight": "2", "conditionNight": "阴", "humidity": "75", "moonphase": "WaningCrescent", "moonrise": "2026-08-08 01:07:00", "moonset": "2026-08-08 16:01:00", "pop": "0", "predictDate": "2026-08-08", "qpf": "0.0", "sunrise": "2026-08-08 06:26:00", "sunset": "2026-08-08 19:53:00", "tempDay": "33", "tempNight": "24", "updatetime": "2026-07-28 06:08:20", "uvi": "6", "windDegreesDay": "180", "windDegreesNight": "225", "windDirDay": "南风", "windDirNight": "西南风", "windLevelDay": "2", "windLevelNight": "2", "windSpeedDay": "2.4", "windSpeedNight": "2.4"}, {"conditionDay": "阵雨", "conditionIdDay": "3", "conditionIdNight": "33", "conditionNight": "阵雨", "humidity": "74", "moonphase": "WaningCrescent", "moonrise": "2026-08-09 02:06:00", "moonset": "2026-08-09 17:06:00", "pop": "60", "predictDate": "2026-08-09", "qpf": "2.4", "sunrise": "2026-08-09 06:27:00", "sunset": "2026-08-09 19:52:00", "tempDay": "34", "tempNight": "25", "updatetime": "2026-07-28 06:08:20", "uvi": "7", "windDegreesDay": "135", "windDegreesNight": "225", "windDirDay": "东南风", "windDirNight": "西南风", "windLevelDay": "2", "windLevelNight": "2", "windSpeedDay": "2.4", "windSpeedNight": "2.4"}, {"conditionDay": "少云", "conditionIdDay": "1", "conditionIdNight": "33", "conditionNight": "阵雨", "humidity": "72", "moonphase": "WaningCrescent", "moonrise": "2026-08-10 03:13:00", "moonset": "2026-08-10 18:05:00", "pop": "50", "predictDate": "2026-08-10", "qpf": "1.0", "sunrise": "2026-08-10 06:27:00", "sunset": "2026-08-10 19:51:00", "tempDay": "35", "tempNight": "25", "updatetime": "2026-07-28 06:08:20", "uvi": "7", "windDegreesDay": "135", "windDegreesNight": "225", "windDirDay": "东南风", "windDirNight": "西南风", "windLevelDay": "2", "windLevelNight": "2", "windSpeedDay": "2.4", "windSpeedNight": "2.4"}, {"conditionDay": "少云", "conditionIdDay": "1", "conditionIdNight": "33", "conditionNight": "阵雨", "humidity": "64", "moonphase": "WaningCrescent", "moonrise": "2026-08-11 04:25:00", "moonset": "2026-08-11 18:54:00", "pop": "80", "predictDate": "2026-08-11", "qpf": "3.0", "sunrise": "2026-08-11 06:28:00", "sunset": "2026-08-11 19:50:00", "tempDay": "37", "tempNight": "26", "updatetime": "2026-07-28 06:08:20", "uvi": "7", "windDegreesDay": "45", "windDegreesNight": "45", "windDirDay": "东北风", "windDirNight": "东北风", "windLevelDay": "3", "windLevelNight": "2", "windSpeedDay": "4.4", "windSpeedNight": "2.4"}]}, "msg": "success", "rc": {"c": 0, "p": "success"}}
+2026-07-28 10:26:12,218 - xiaoan.moji - INFO - [MojiService] 预报响应: code=0, 首日conditionIdDay=4, conditionDay=雷阵雨, predictDate=2026-07-27
+2026-07-28 10:26:12,220 - xiaoan.weather - INFO - 归一化数据: {"city": "四川省成都市", "poi_name": "四川省成都市", "province": null, "cityname": null, "adname": null, "date": "2026-07-29", "lng": 104.066301, "lat": 30.572961, "forecast": [{"date": "2026-07-29", "label": "雷阵雨", "icon": "thunderstorm", "condition": "thunderstorm", "temp_high": 30, "temp_low": 24, "humidity": 88, "wind_direction": "东北风", "wind_level": "2", "vis": "10km", "uv_index": "4", "pressure": "1013"}], "alerts": [], "summary": "正在为您播报：四川省成都市的预报。今日雷阵雨，最高气温30度，最低气温24度。"}
+2026-07-28 10:26:12,220 - xiaoan.handlers - INFO - [Tool Result] get_weather_forecast -> Result: {"city": "四川省成都市", "poi_name": "四川省成都市", "province": null, "cityname": null, "adname": null, "date": "2026-07-29", "lng": 104.066301, "lat": 30.572961, "forecast": [{"date": "2026-07-29", "label": "雷阵雨", "icon": "thunderstorm", "condition": "thunderstorm", "temp_high": 30, "temp_low": 24, "humidity": 88, "wind_direction": "东北风", "wind_level": "2", "vis": "10km", "uv_index": "4", "pressure": "1013"}], "alerts": [], "summary": "正在为您播报：四川省成都市的预报。今日雷阵雨，最高气温30度，最低气温24度。"}
+2026-07-28 10:27:11,216 - xiaoan.qwen_audio_realtime - INFO - 🎙️ [QwenAudio 声纹] 已激活【静态绑定角色: 『Ming』】 -> 加载最新 3/5 份采样矩阵: ['http://8.141.83.146:8777/voiceprints/Ming/20260727172523.wav', 'http://8.141.83.146:8777/voiceprints/Ming/20260724172958.wav', 'http://8.141.83.146:8777/voiceprints/Ming/20260724172201.wav']
+2026-07-28 10:27:11,221 - xiaoan.qwen_audio_realtime - INFO - [QwenAudio] Connecting to wss://llm-lbw1u9gopstusquc.cn-beijing.maas.aliyuncs.com/api-ws/v1/realtime?model=qwen-audio-3.0-realtime-flash (model=qwen-audio-3.0-realtime-flash voice=longanqian turn=smart_turn)
+2026-07-28 10:27:11,856 - xiaoan.qwen_audio_realtime - INFO - 🎙️ [QwenAudio 声纹注册] 阿里云已接收配置，正在异步下载声纹音频并提取特征... (task_id: vp_cCYlKVC8n5rH18hg8j7aI)
+2026-07-28 10:27:12,783 - xiaoan.qwen_audio_realtime - INFO - 🎉 [QwenAudio 声纹注册] ✅ 阿里云服务端声纹特征提取成功！声纹锁已真正生效！(task_id: vp_cCYlKVC8n5rH18hg8j7aI)
+2026-07-28 10:27:16,239 - xiaoan.qwen_audio_realtime - INFO - [QwenAudio-ASR 完结] 用户语音识别: '明天会下雨吗？'
+2026-07-28 10:27:17,027 - xiaoan.handlers - INFO - [Tool Call] 🔨 get_weather_forecast -> 参数: {"location_name": "成都", "date": "2026-07-28", "query_types": ["current"], "elements": "[\"rain\"]"}
+2026-07-28 10:27:17,027 - xiaoan.amap - INFO - 正在尝试使用 [高德POI] 查询地点: 成都 ...
+2026-07-28 10:27:17,323 - xiaoan.amap - INFO - [高德POI] 命中: 四川省成都市 => (104.066301, 30.572961)
+2026-07-28 10:27:17,324 - xiaoan.handlers - INFO - [Result] 高德地图 POI 解析成功: location='四川省成都市', lng=104.066301, lat=30.572961
+2026-07-28 10:27:17,325 - xiaoan.handlers - INFO - [Operation] 调用 get_weather 天气服务: city='四川省成都市', date='2026-07-28', date_end='', days=1, lon=104.066301, lat=30.572961
+2026-07-28 10:27:17,325 - xiaoan.weather - INFO - 正在尝试使用 [墨迹天气] 联网查询 四川省成都市 的真实天气...
+2026-07-28 10:27:17,325 - xiaoan.weather - INFO - [墨迹天气] Amap Geocoding 命中: 四川省成都市 (104.066301, 30.572961)
+2026-07-28 10:27:17,330 - xiaoan.moji - INFO - [API Call] 墨迹天气-实况天气 -> POST https://aliv8.data.moji.com/whapi/json/aliweather/condition | 参数: {"lat": "30.572961", "lon": "104.066301", "token": "ff826c205f8f4a59701e64e9e64e01c4"}
+2026-07-28 10:27:17,521 - xiaoan.moji - INFO - [API Response] 实况天气返回: {"code": 0, "data": {"city": {"cityId": 3363, "counname": "中国", "ianatimezone": "Asia/Shanghai", "name": "天堂岛海洋乐园", "pname": "四川省", "secondaryname": "成都市", "timezone": "8"}, "condition": {"condition": "多云", "conditionId": "8", "humidity": "89", "icon": "1", "pressure": "953", "realFeel": "29", "sunRise": "2026-07-28 06:19:00", "sunSet": "2026-07-28 20:01:00", "temp": "25", "tips": "今天有雨，略微偏热，注意衣物变化。", "updatetime": "2026-07-28 10:20:08", "uvi": "1", "vis": "7500", "windDegrees": "315", "windDir": "西北风", "windLevel": "1", "windSpeed": "0.5"}}, "msg": "success", "rc": {"c": 0, "p": "success"}}
+2026-07-28 10:27:17,521 - xiaoan.moji - INFO - [MojiService] 实时天气响应: code=0, conditionId=8, condition=多云
+2026-07-28 10:27:17,521 - xiaoan.moji - INFO - [MojiService] 响应数据子节点: ['city', 'condition']
+2026-07-28 10:27:17,523 - xiaoan.weather - INFO - 归一化数据: {"city": "四川省成都市", "poi_name": "四川省成都市", "province": null, "cityname": null, "adname": null, "date": "2026-07-28", "lng": 104.066301, "lat": 30.572961, "forecast": [], "alerts": [], "summary": "正在为您播报：目前四川省成都市天气多云，气温25度。", "current": {"condition": "cloudy", "label": "多云", "icon": "cloudy", "temp_c": 25, "feels_like_c": 29, "humidity": 89, "wind_direction": "西北风", "wind_level": "1", "vis": "7.5km", "pressure": "953", "uv_index": "1"}}
+2026-07-28 10:27:17,524 - xiaoan.handlers - INFO - [Tool Result] get_weather_forecast -> Result: {"city": "四川省成都市", "poi_name": "四川省成都市", "province": null, "cityname": null, "adname": null, "date": "2026-07-28", "lng": 104.066301, "lat": 30.572961, "forecast": [], "alerts": [], "summary": "正在为您播报：目前四川省成都市天气多云，气温25度。", "current": {"condition": "cloudy", "label": "多云", "icon": "cloudy", "temp_c": 25, "feels_like_c": 29, "humidity": 89, "wind_direction": "西北风", "wind_level": "1", "vis": "7.5km", "pressure": "953", "uv_index": "1"}}
+2026-07-28 10:27:19,099 - xiaoan.qwen_audio_realtime - INFO - [QwenAudio] AI: 成都现在没有下雨，天气多云，气温25度。
+2026-07-28 10:28:50,275 - root - INFO - [System Logging] 日志初始化完成 -> 后端日志: D:\projects\xiaoan\voice_robot\logs\backend\backend.log | 前端日志: D:\projects\xiaoan\voice_robot\logs\frontend\frontend.log (按天切割，保留60天)
+2026-07-28 10:28:50,277 - root - INFO - ==================================================
+2026-07-28 10:28:50,277 - root - INFO - Voice Robot Backend v2.0 — 前端麦克风接管模式
+2026-07-28 10:28:50,277 - root - INFO -   默认城市: 成都
+2026-07-28 10:28:50,277 - root - INFO -   SSE 端点: /sse
+2026-07-28 10:28:50,277 - root - INFO - ==================================================
+2026-07-28 10:32:10,290 - root - INFO - [System Logging] 日志初始化完成 -> 后端日志: D:\projects\xiaoan\voice_robot\logs\backend\backend.log | 前端日志: D:\projects\xiaoan\voice_robot\logs\frontend\frontend.log (按天切割，保留60天)
+2026-07-28 10:32:10,290 - root - INFO - ==================================================
+2026-07-28 10:32:10,291 - root - INFO - Voice Robot Backend v2.0 — 前端麦克风接管模式
+2026-07-28 10:32:10,291 - root - INFO -   默认城市: 成都
+2026-07-28 10:32:10,291 - root - INFO -   SSE 端点: /sse
+2026-07-28 10:32:10,291 - root - INFO - ==================================================
+2026-07-28 10:32:53,302 - xiaoan.qwen_audio_realtime - INFO - 🎙️ [QwenAudio 声纹] 已激活【静态绑定角色: 『Ming』】 -> 加载最新 3/5 份采样矩阵: ['http://8.141.83.146:8777/voiceprints/Ming/20260727172523.wav', 'http://8.141.83.146:8777/voiceprints/Ming/20260724172958.wav', 'http://8.141.83.146:8777/voiceprints/Ming/20260724172201.wav']
+2026-07-28 10:32:53,306 - xiaoan.qwen_audio_realtime - INFO - [QwenAudio] Connecting to wss://llm-lbw1u9gopstusquc.cn-beijing.maas.aliyuncs.com/api-ws/v1/realtime?model=qwen-audio-3.0-realtime-flash (model=qwen-audio-3.0-realtime-flash voice=longanqian turn=smart_turn)
+2026-07-28 10:32:53,936 - xiaoan.qwen_audio_realtime - INFO - 🎙️ [QwenAudio 声纹注册] 阿里云已接收配置，正在异步下载声纹音频并提取特征... (task_id: vp_6KUqPKMgl7e4P2s3k8cN1)
+2026-07-28 10:32:54,874 - xiaoan.qwen_audio_realtime - INFO - 🎉 [QwenAudio 声纹注册] ✅ 阿里云服务端声纹特征提取成功！声纹锁已真正生效！(task_id: vp_6KUqPKMgl7e4P2s3k8cN1)
+2026-07-28 10:32:56,153 - xiaoan.qwen_audio_realtime - INFO - [QwenAudio-ASR 完结] 用户语音识别: '成都明天会下雨吗？'
+2026-07-28 10:32:56,423 - xiaoan.handlers - INFO - [Tool Call] 🔨 get_weather_forecast -> 参数: {"location_name": "成都", "date": "2026-07-29", "query_types": ["forecast"]}
+2026-07-28 10:32:56,424 - xiaoan.amap - INFO - 正在尝试使用 [高德POI] 查询地点: 成都 ...
+2026-07-28 10:32:56,743 - xiaoan.amap - INFO - [高德POI] 命中: 四川省成都市 => (104.066301, 30.572961)
+2026-07-28 10:32:56,743 - xiaoan.handlers - INFO - [Result] 高德地图 POI 解析成功: location='四川省成都市', lng=104.066301, lat=30.572961
+2026-07-28 10:32:56,744 - xiaoan.handlers - INFO - [Operation] 调用 get_weather 天气服务: city='四川省成都市', date='2026-07-29', date_end='', days=1, lon=104.066301, lat=30.572961
+2026-07-28 10:32:56,744 - xiaoan.weather - INFO - 正在尝试使用 [墨迹天气] 联网查询 四川省成都市 的真实天气...
+2026-07-28 10:32:56,744 - xiaoan.weather - INFO - [墨迹天气] Amap Geocoding 命中: 四川省成都市 (104.066301, 30.572961)
+2026-07-28 10:32:56,750 - xiaoan.moji - INFO - [API Call] 墨迹天气-天气预报 -> POST https://aliv8.data.moji.com/whapi/json/aliweather/forecast15days | 参数: {"lat": "30.572961", "lon": "104.066301", "token": "7538f7246218bdbf795b329ab09cc524"}
+2026-07-28 10:32:56,949 - xiaoan.moji - INFO - [API Response] 天气预报返回: {"code": 0, "data": {"city": {"cityId": 285195, "counname": "中国", "ianatimezone": "Asia/Shanghai", "name": "武侯区", "pname": "四川省", "secondaryname": "成都市", "timezone": "8"}, "forecast": [{"conditionDay": "阵雨", "conditionIdDay": "3", "conditionIdNight": "33", "conditionNight": "阵雨", "humidity": "84", "moonphase": "WaxingGibbous", "moonrise": "2026-07-27 18:42:00", "moonset": "2026-07-27 03:44:00", "pop": "80", "predictDate": "2026-07-27", "qpf": "3.6", "sunrise": "2026-07-27 06:19:00", "sunset": "2026-07-27 20:02:00", "tempDay": "31", "tempNight": "22", "updatetime": "2026-07-27 22:00:00", "uvi": "4", "windDegreesDay": "0", "windDegreesNight": "45", "windDirDay": "北风", "windDirNight": "东北风", "windLevelDay": "2", "windLevelNight": "1", "windSpeedDay": "2.4", "windSpeedNight": "0.9"}, {"conditionDay": "阵雨", "conditionIdDay": "3", "conditionIdNight": "33", "conditionNight": "阵雨", "humidity": "86", "moonphase": "WaxingGibbous", "moonrise": "2026-07-28 19:24:00", "moonset": "2026-07-28 04:40:00", "pop": "80", "predictDate": "2026-07-28", "qpf": "4.4", "sunrise": "2026-07-28 06:19:00", "sunset": "2026-07-28 20:02:00", "tempDay": "32", "tempNight": "23", "updatetime": "2026-07-28 09:00:00", "uvi": "4", "windDegreesDay": "0", "windDegreesNight": "45", "windDirDay": "北风", "windDirNight": "东北风", "windLevelDay": "1", "windLevelNight": "1", "windSpeedDay": "0.9", "windSpeedNight": "0.9"}, {"conditionDay": "阵雨", "conditionIdDay": "3", "conditionIdNight": "9", "conditionNight": "大雨", "humidity": "88", "moonphase": "Full", "moonrise": "2026-07-29 20:02:00", "moonset": "2026-07-29 05:39:00", "pop": "80", "predictDate": "2026-07-29", "qpf": "18.0", "sunrise": "2026-07-29 06:20:00", "sunset": "2026-07-29 20:01:00", "tempDay": "29", "tempNight": "22", "updatetime": "2026-07-28 09:00:00", "uvi": "4", "windDegreesDay": "45", "windDegreesNight": "45", "windDirDay": "东北风", "windDirNight": "东北风", "windLevelDay": "2", "windLevelNight": "2", "windSpeedDay": "2.4", "windSpeedNight": "2.4"}, {"conditionDay": "阵雨", "conditionIdDay": "3", "conditionIdNight": "8", "conditionNight": "中雨", "humidity": "92", "moonphase": "WaningGibbous", "moonrise": "2026-07-30 20:35:00", "moonset": "2026-07-30 06:38:00", "pop": "80", "predictDate": "2026-07-30", "qpf": "9.9", "sunrise": "2026-07-30 06:20:00", "sunset": "2026-07-30 20:00:00", "tempDay": "25", "tempNight": "22", "updatetime": "2026-07-28 09:00:00", "uvi": "2", "windDegreesDay": "45", "windDegreesNight": "45", "windDirDay": "东北风", "windDirNight": "东北风", "windLevelDay": "2", "windLevelNight": "2", "windSpeedDay": "2.4", "windSpeedNight": "2.4"}, {"conditionDay": "小雨", "conditionIdDay": "7", "conditionIdNight": "2", "conditionNight": "阴", "humidity": "91", "moonphase": "WaningGibbous", "moonrise": "2026-07-31 21:05:00", "moonset": "2026-07-31 07:36:00", "pop": "80", "predictDate": "2026-07-31", "qpf": "2.0", "sunrise": "2026-07-31 06:21:00", "sunset": "2026-07-31 20:00:00", "tempDay": "25", "tempNight": "22", "updatetime": "2026-07-28 09:00:00", "uvi": "2", "windDegreesDay": "45", "windDegreesNight": "45", "windDirDay": "东北风", "windDirNight": "东北风", "windLevelDay": "3", "windLevelNight": "3", "windSpeedDay": "4.4", "windSpeedNight": "4.4"}, {"conditionDay": "多云", "conditionIdDay": "1", "conditionIdNight": "2", "conditionNight": "阴", "humidity": "90", "moonphase": "WaningGibbous", "moonrise": "2026-08-01 21:34:00", "moonset": "2026-08-01 08:35:00", "pop": "0", "predictDate": "2026-08-01", "qpf": "0.0", "sunrise": "2026-08-01 06:22:00", "sunset": "2026-08-01 19:59:00", "tempDay": "27", "tempNight": "22", "updatetime": "2026-07-28 09:00:00", "uvi": "3", "windDegreesDay": "45", "windDegreesNight": "45", "windDirDay": "东北风", "windDirNight": "东北风", "windLevelDay": "3", "windLevelNight": "2", "windSpeedDay": "4.4", "windSpeedNight": "2.4"}, {"conditionDay": "多云", "conditionIdDay": "1", "conditionIdNight": "2", "conditionNight": "阴", "humidity": "85", "moonphase": "WaningGibbous", "moonrise": "2026-08-02 22:02:00", "moonset": "2026-08-02 09:33:00", "pop": "0", "predictDate": "2026-08-02", "qpf": "0.0", "sunrise": "2026-08-02 06:22:00", "sunset": "2026-08-02 19:58:00", "tempDay": "29", "tempNight": "22", "updatetime": "2026-07-28 09:00:00", "uvi": "4", "windDegreesDay": "45", "windDegreesNight": "45", "windDirDay": "东北风", "windDirNight": "东北风", "windLevelDay": "2", "windLevelNight": "2", "windSpeedDay": "2.4", "windSpeedNight": "2.4"}, {"conditionDay": "阴", "conditionIdDay": "2", "conditionIdNight": "2", "conditionNight": "阴", "humidity": "81", "moonphase": "WaningGibbous", "moonrise": "2026-08-03 22:30:00", "moonset": "2026-08-03 10:31:00", "pop": "0", "predictDate": "2026-08-03", "qpf": "0.0", "sunrise": "2026-08-03 06:23:00", "sunset": "2026-08-03 19:57:00", "tempDay": "30", "tempNight": "22", "updatetime": "2026-07-28 09:00:00", "uvi": "4", "windDegreesDay": "225", "windDegreesNight": "225", "windDirDay": "西南风", "windDirNight": "西南风", "windLevelDay": "2", "windLevelNight": "2", "windSpeedDay": "2.4", "windSpeedNight": "2.4"}, {"conditionDay": "阴", "conditionIdDay": "2", "conditionIdNight": "2", "conditionNight": "阴", "humidity": "80", "moonphase": "WaningGibbous", "moonrise": "2026-08-04 23:01:00", "moonset": "2026-08-04 11:32:00", "pop": "0", "predictDate": "2026-08-04", "qpf": "0.0", "sunrise": "2026-08-04 06:24:00", "sunset": "2026-08-04 19:56:00", "tempDay": "31", "tempNight": "23", "updatetime": "2026-07-28 09:00:00", "uvi": "5", "windDegreesDay": "135", "windDegreesNight": "225", "windDirDay": "东南风", "windDirNight": "西南风", "windLevelDay": "2", "windLevelNight": "2", "windSpeedDay": "2.4", "windSpeedNight": "2.4"}, {"conditionDay": "阴", "conditionIdDay": "2", "conditionIdNight": "7", "conditionNight": "小雨", "humidity": "80", "moonphase": "WaningGibbous", "moonrise": "2026-08-05 23:36:00", "moonset": "2026-08-05 12:35:00", "pop": "80", "predictDate": "2026-08-05", "qpf": "3.0", "sunrise": "2026-08-05 06:24:00", "sunset": "2026-08-05 19:56:00", "tempDay": "34", "tempNight": "24", "updatetime": "2026-07-28 09:00:00", "uvi": "5", "windDegreesDay": "135", "windDegreesNight": "135", "windDirDay": "东南风", "windDirNight": "东南风", "windLevelDay": "2", "windLevelNight": "2", "windSpeedDay": "2.4", "windSpeedNight": "2.4"}, {"conditionDay": "小雨", "conditionIdDay": "7", "conditionIdNight": "7", "conditionNight": "小雨", "humidity": "81", "moonphase": "Last", "moonrise": "2026-08-06 00:00:00", "moonset": "2026-08-06 13:42:00", "pop": "60", "predictDate": "2026-08-06", "qpf": "4.3", "sunrise": "2026-08-06 06:25:00", "sunset": "2026-08-06 19:55:00", "tempDay": "34", "tempNight": "25", "updatetime": "2026-07-28 09:00:00", "uvi": "5", "windDegreesDay": "225", "windDegreesNight": "225", "windDirDay": "西南风", "windDirNight": "西南风", "windLevelDay": "2", "windLevelNight": "2", "windSpeedDay": "2.4", "windSpeedNight": "2.4"}, {"conditionDay": "小雨", "conditionIdDay": "7", "conditionIdNight": "7", "conditionNight": "小雨", "humidity": "80", "moonphase": "WaningCrescent", "moonrise": "2026-08-07 00:17:00", "moonset": "2026-08-07 14:51:00", "pop": "60", "predictDate": "2026-08-07", "qpf": "1.8", "sunrise": "2026-08-07 06:25:00", "sunset": "2026-08-07 19:54:00", "tempDay": "32", "tempNight": "24", "updatetime": "2026-07-28 09:00:00", "uvi": "6", "windDegreesDay": "45", "windDegreesNight": "45", "windDirDay": "东北风", "windDirNight": "东北风", "windLevelDay": "2", "windLevelNight": "2", "windSpeedDay": "2.4", "windSpeedNight": "2.4"}, {"conditionDay": "小雨", "conditionIdDay": "7", "conditionIdNight": "7", "conditionNight": "小雨", "humidity": "75", "moonphase": "WaningCrescent", "moonrise": "2026-08-08 01:07:00", "moonset": "2026-08-08 16:01:00", "pop": "80", "predictDate": "2026-08-08", "qpf": "6.0", "sunrise": "2026-08-08 06:26:00", "sunset": "2026-08-08 19:53:00", "tempDay": "36", "tempNight": "24", "updatetime": "2026-07-28 09:00:00", "uvi": "6", "windDegreesDay": "180", "windDegreesNight": "225", "windDirDay": "南风", "windDirNight": "西南风", "windLevelDay": "2", "windLevelNight": "2", "windSpeedDay": "2.4", "windSpeedNight": "2.4"}, {"conditionDay": "小雨", "conditionIdDay": "7", "conditionIdNight": "7", "conditionNight": "小雨", "humidity": "74", "moonphase": "WaningCrescent", "moonrise": "2026-08-09 02:05:00", "moonset": "2026-08-09 17:07:00", "pop": "60", "predictDate": "2026-08-09", "qpf": "2.4", "sunrise": "2026-08-09 06:27:00", "sunset": "2026-08-09 19:52:00", "tempDay": "37", "tempNight": "25", "updatetime": "2026-07-28 09:00:00", "uvi": "7", "windDegreesDay": "135", "windDegreesNight": "225", "windDirDay": "东南风", "windDirNight": "西南风", "windLevelDay": "2", "windLevelNight": "2", "windSpeedDay": "2.4", "windSpeedNight": "2.4"}, {"conditionDay": "阴", "conditionIdDay": "2", "conditionIdNight": "31", "conditionNight": "多云", "humidity": "72", "moonphase": "WaningCrescent", "moonrise": "2026-08-10 03:12:00", "moonset": "2026-08-10 18:05:00", "pop": "0", "predictDate": "2026-08-10", "qpf": "0.0", "sunrise": "2026-08-10 06:27:00", "sunset": "2026-08-10 19:51:00", "tempDay": "37", "tempNight": "25", "updatetime": "2026-07-28 09:00:00", "uvi": "7", "windDegreesDay": "135", "windDegreesNight": "225", "windDirDay": "东南风", "windDirNight": "西南风", "windLevelDay": "2", "windLevelNight": "2", "windSpeedDay": "2.4", "windSpeedNight": "2.4"}, {"conditionDay": "阴", "conditionIdDay": "2", "conditionIdNight": "31", "conditionNight": "多云", "humidity": "64", "moonphase": "WaningCrescent", "moonrise": "2026-08-11 04:25:00", "moonset": "2026-08-11 18:55:00", "pop": "0", "predictDate": "2026-08-11", "qpf": "0.0", "sunrise": "2026-08-11 06:28:00", "sunset": "2026-08-11 19:50:00", "tempDay": "37", "tempNight": "25", "updatetime": "2026-07-28 09:00:00", "uvi": "7", "windDegreesDay": "45", "windDegreesNight": "45", "windDirDay": "东北风", "windDirNight": "东北风", "windLevelDay": "3", "windLevelNight": "2", "windSpeedDay": "4.4", "windSpeedNight": "2.4"}]}, "msg": "success", "rc": {"c": 0, "p": "success"}}
+2026-07-28 10:32:56,950 - xiaoan.moji - INFO - [MojiService] 预报响应: code=0, 首日conditionIdDay=3, conditionDay=阵雨, predictDate=2026-07-27
+2026-07-28 10:32:56,951 - xiaoan.weather - INFO - 归一化数据: {"city": "四川省成都市", "poi_name": "四川省成都市", "province": null, "cityname": null, "adname": null, "date": "2026-07-29", "lng": 104.066301, "lat": 30.572961, "forecast": [{"date": "2026-07-29", "label": "阵雨", "icon": "rainy", "condition": "rainy", "temp_high": 29, "temp_low": 22, "humidity": 88, "wind_direction": "东北风", "wind_level": "2", "vis": "10km", "uv_index": "4", "pressure": "1013"}], "alerts": [], "summary": "正在为您播报：四川省成都市的预报。今日阵雨，最高气温29度，最低气温22度。"}
+2026-07-28 10:32:56,952 - xiaoan.handlers - INFO - [Tool Result] get_weather_forecast -> Result: {"city": "四川省成都市", "poi_name": "四川省成都市", "province": null, "cityname": null, "adname": null, "date": "2026-07-29", "lng": 104.066301, "lat": 30.572961, "forecast": [{"date": "2026-07-29", "label": "阵雨", "icon": "rainy", "condition": "rainy", "temp_high": 29, "temp_low": 22, "humidity": 88, "wind_direction": "东北风", "wind_level": "2", "vis": "10km", "uv_index": "4", "pressure": "1013"}], "alerts": [], "summary": "正在为您播报：四川省成都市的预报。今日阵雨，最高气温29度，最低气温22度。"}
+2026-07-28 10:32:59,101 - xiaoan.qwen_audio_realtime - INFO - [QwenAudio] AI: 明天成都有阵雨，气温在22到29度之间，记得带把伞哦。
+2026-07-28 10:36:39,021 - root - INFO - [System Logging] 日志初始化完成 -> 后端日志: D:\projects\xiaoan\voice_robot\logs\backend\backend.log | 前端日志: D:\projects\xiaoan\voice_robot\logs\frontend\frontend.log (按天切割，保留60天)
+2026-07-28 10:36:39,021 - root - INFO - ==================================================
+2026-07-28 10:36:39,021 - root - INFO - Voice Robot Backend v2.0 — 前端麦克风接管模式
+2026-07-28 10:36:39,021 - root - INFO -   默认城市: 成都
+2026-07-28 10:36:39,021 - root - INFO -   SSE 端点: /sse
+2026-07-28 10:36:39,021 - root - INFO - ==================================================
+2026-07-28 10:36:42,987 - root - INFO - [System Logging] 日志初始化完成 -> 后端日志: D:\projects\xiaoan\voice_robot\logs\backend\backend.log | 前端日志: D:\projects\xiaoan\voice_robot\logs\frontend\frontend.log (按天切割，保留60天)
+2026-07-28 10:36:42,987 - root - INFO - ==================================================
+2026-07-28 10:36:42,987 - root - INFO - Voice Robot Backend v2.0 — 前端麦克风接管模式
+2026-07-28 10:36:42,987 - root - INFO -   默认城市: 成都
+2026-07-28 10:36:42,987 - root - INFO -   SSE 端点: /sse
+2026-07-28 10:36:42,987 - root - INFO - ==================================================
+2026-07-28 10:36:48,502 - root - INFO - [System Logging] 日志初始化完成 -> 后端日志: D:\projects\xiaoan\voice_robot\logs\backend\backend.log | 前端日志: D:\projects\xiaoan\voice_robot\logs\frontend\frontend.log (按天切割，保留60天)
+2026-07-28 10:36:48,502 - root - INFO - ==================================================
+2026-07-28 10:36:48,502 - root - INFO - Voice Robot Backend v2.0 — 前端麦克风接管模式
+2026-07-28 10:36:48,504 - root - INFO -   默认城市: 成都
+2026-07-28 10:36:48,504 - root - INFO -   SSE 端点: /sse
+2026-07-28 10:36:48,504 - root - INFO - ==================================================
+2026-07-28 10:37:47,135 - root - INFO - [System Logging] 日志初始化完成 -> 后端日志: D:\projects\xiaoan\voice_robot\logs\backend\backend.log | 前端日志: D:\projects\xiaoan\voice_robot\logs\frontend\frontend.log (按天切割，保留60天)
+2026-07-28 10:37:47,135 - root - INFO - ==================================================
+2026-07-28 10:37:47,135 - root - INFO - Voice Robot Backend v2.0 — 前端麦克风接管模式
+2026-07-28 10:37:47,135 - root - INFO -   默认城市: 成都
+2026-07-28 10:37:47,136 - root - INFO -   SSE 端点: /sse
+2026-07-28 10:37:47,136 - root - INFO - ==================================================
+2026-07-28 10:37:58,628 - xiaoan.qwen_audio_realtime - INFO - 🎙️ [QwenAudio 声纹] 已激活【静态绑定角色: 『Ming』】 -> 加载最新 3/5 份采样矩阵: ['http://8.141.83.146:8777/voiceprints/Ming/20260727172523.wav', 'http://8.141.83.146:8777/voiceprints/Ming/20260724172958.wav', 'http://8.141.83.146:8777/voiceprints/Ming/20260724172201.wav']
+2026-07-28 10:37:58,631 - xiaoan.qwen_audio_realtime - INFO - [QwenAudio] Connecting to wss://llm-lbw1u9gopstusquc.cn-beijing.maas.aliyuncs.com/api-ws/v1/realtime?model=qwen-audio-3.0-realtime-flash (model=qwen-audio-3.0-realtime-flash voice=longanqian turn=smart_turn)
+2026-07-28 10:37:59,263 - xiaoan.qwen_audio_realtime - INFO - 🎙️ [QwenAudio 声纹注册] 阿里云已接收配置，正在异步下载声纹音频并提取特征... (task_id: vp_yCQ3LMKscUf1nyqNaleKs)
+2026-07-28 10:38:00,160 - xiaoan.qwen_audio_realtime - INFO - 🎉 [QwenAudio 声纹注册] ✅ 阿里云服务端声纹特征提取成功！声纹锁已真正生效！(task_id: vp_yCQ3LMKscUf1nyqNaleKs)
+2026-07-28 10:38:01,450 - xiaoan.qwen_audio_realtime - INFO - [QwenAudio-ASR 完结] 用户语音识别: '成都会下雨吗？'
+2026-07-28 10:38:01,691 - xiaoan.handlers - INFO - [Tool Call] 🔨 get_weather_forecast -> 参数: {"location_name": "成都", "date": "2026-07-28", "query_types": ["current"]}
+2026-07-28 10:38:01,692 - xiaoan.amap - INFO - 正在尝试使用 [高德POI] 查询地点: 成都 ...
+2026-07-28 10:38:01,997 - xiaoan.amap - INFO - [高德POI] 命中: 四川省成都市 => (104.066301, 30.572961)
+2026-07-28 10:38:01,997 - xiaoan.handlers - INFO - [Result] 高德地图 POI 解析成功: location='四川省成都市', lng=104.066301, lat=30.572961
+2026-07-28 10:38:01,997 - xiaoan.handlers - INFO - [Operation] 调用 get_weather 天气服务: city='四川省成都市', date='2026-07-28', date_end='', days=1, lon=104.066301, lat=30.572961
+2026-07-28 10:38:01,997 - xiaoan.weather - INFO - 正在尝试使用 [墨迹天气] 联网查询 四川省成都市 的真实天气...
+2026-07-28 10:38:01,997 - xiaoan.weather - INFO - [墨迹天气] Amap Geocoding 命中: 四川省成都市 (104.066301, 30.572961)
+2026-07-28 10:38:02,003 - xiaoan.moji - INFO - [API Call] 墨迹天气-实况天气 -> POST https://aliv8.data.moji.com/whapi/json/aliweather/condition | 参数: {"lat": "30.572961", "lon": "104.066301", "token": "ff826c205f8f4a59701e64e9e64e01c4"}
+2026-07-28 10:38:02,171 - xiaoan.moji - INFO - [API Response] 实况天气返回: {"code": 0, "data": {"city": {"cityId": 285195, "counname": "中国", "ianatimezone": "Asia/Shanghai", "name": "武侯区", "pname": "四川省", "secondaryname": "成都市", "timezone": "8"}, "condition": {"condition": "... [已折叠，全文共 599 字符]
+2026-07-28 10:38:02,171 - xiaoan.moji - INFO - [MojiService] 实时天气响应: code=0, conditionId=51, condition=小雨
+2026-07-28 10:38:02,171 - xiaoan.moji - INFO - [MojiService] 响应数据子节点: ['city', 'condition']
+2026-07-28 10:38:02,172 - xiaoan.weather - INFO - 归一化数据: {"city": "四川省成都市", "poi_name": "四川省成都市", "province": null, "cityname": null, "adname": null, "date": "2026-07-28", "lng": 104.066301, "lat": 30.572961, "forecast": [], "alerts": [], "summary": "正在为您播报：目前四川省成都市天气小雨，气温24度。", "current": {"condition": "rainy", "label": "小雨", "icon": "rainy", "temp_c": 24, "feels_like_c": 28, "humidity": 100, "wind_direction": "西南风", "wind_level": "1", "vis": "7.5km", "pressure": "952", "uv_index": "1"}}
+2026-07-28 10:38:02,173 - xiaoan.handlers - INFO - [Tool Result] get_weather_forecast -> Result: {"city": "四川省成都市", "poi_name": "四川省成都市", "province": null, "cityname": null, "adname": null, "date": "2026-07-28", "lng": 104.066301, "lat": 30.572961, "forecast": [], "alerts": [], "summary": "正在为您播报：目前四川省成都市天气小雨，气温24度。... [已折叠，全文共 436 字符]
+2026-07-28 10:38:03,729 - xiaoan.qwen_audio_realtime - INFO - [QwenAudio] AI: 成都现在正在下小雨，气温24度。
+2026-07-28 10:38:12,102 - xiaoan.qwen_audio_realtime - INFO - [QwenAudio-ASR 完结] 用户语音识别: '明天呢？'
+2026-07-28 10:38:12,675 - xiaoan.handlers - INFO - [Tool Call] 🔨 get_weather_forecast -> 参数: {"location_name": "成都", "date": "2026-07-29", "query_types": ["forecast"]}
+2026-07-28 10:38:12,676 - xiaoan.amap - INFO - 正在尝试使用 [高德POI] 查询地点: 成都 ...
+2026-07-28 10:38:12,958 - xiaoan.amap - INFO - [高德POI] 命中: 四川省成都市 => (104.066301, 30.572961)
+2026-07-28 10:38:12,958 - xiaoan.handlers - INFO - [Result] 高德地图 POI 解析成功: location='四川省成都市', lng=104.066301, lat=30.572961
+2026-07-28 10:38:12,959 - xiaoan.handlers - INFO - [Operation] 调用 get_weather 天气服务: city='四川省成都市', date='2026-07-29', date_end='', days=1, lon=104.066301, lat=30.572961
+2026-07-28 10:38:12,959 - xiaoan.weather - INFO - 正在尝试使用 [墨迹天气] 联网查询 四川省成都市 的真实天气...
+2026-07-28 10:38:12,959 - xiaoan.weather - INFO - [墨迹天气] Amap Geocoding 命中: 四川省成都市 (104.066301, 30.572961)
+2026-07-28 10:38:12,965 - xiaoan.moji - INFO - [API Call] 墨迹天气-天气预报 -> POST https://aliv8.data.moji.com/whapi/json/aliweather/forecast15days | 参数: {"lat": "30.572961", "lon": "104.066301", "token": "7538f7246218bdbf795b329ab09cc524"}
+2026-07-28 10:38:13,155 - xiaoan.moji - INFO - [API Response] 天气预报返回: {"code": 0, "data": {"city": {"cityId": 3363, "counname": "中国", "ianatimezone": "Asia/Shanghai", "name": "天堂岛海洋乐园", "pname": "四川省", "secondaryname": "成都市", "timezone": "8"}, "forecast": [{"conditionDa... [已折叠，全文共 9968 字符]
+2026-07-28 10:38:13,155 - xiaoan.moji - INFO - [MojiService] 预报响应: code=0, 首日conditionIdDay=4, conditionDay=雷阵雨, predictDate=2026-07-27
+2026-07-28 10:38:13,155 - xiaoan.weather - INFO - 归一化数据: {"city": "四川省成都市", "poi_name": "四川省成都市", "province": null, "cityname": null, "adname": null, "date": "2026-07-29", "lng": 104.066301, "lat": 30.572961, "forecast": [{"date": "2026-07-29", "label": "雷阵雨", "icon": "thunderstorm", "condition": "thunderstorm", "temp_high": 30, "temp_low": 24, "humidity": 88, "wind_direction": "东风", "wind_level": "2", "vis": "10km", "uv_index": "4", "pressure": "1013"}], "alerts": [], "summary": "正在为您播报：四川省成都市的预报。今日雷阵雨，最高气温30度，最低气温24度。"}
+2026-07-28 10:38:13,157 - xiaoan.handlers - INFO - [Tool Result] get_weather_forecast -> Result: {"city": "四川省成都市", "poi_name": "四川省成都市", "province": null, "cityname": null, "adname": null, "date": "2026-07-29", "lng": 104.066301, "lat": 30.572961, "forecast": [{"date": "2026-07-29", "label": "雷阵雨", "icon": "thunder... [已折叠，全文共 470 字符]
+2026-07-28 10:38:14,974 - xiaoan.qwen_audio_realtime - INFO - [QwenAudio] AI: 明天成都会有雷阵雨，最高气温30度，最低气温24度。
+2026-07-28 10:39:09,924 - root - INFO - [System Logging] 日志初始化完成 -> 后端日志: D:\projects\xiaoan\voice_robot\logs\backend\backend.log | 前端日志: D:\projects\xiaoan\voice_robot\logs\frontend\frontend.log (按天切割，保留60天)
+2026-07-28 10:39:09,925 - root - INFO - ==================================================
+2026-07-28 10:39:09,925 - root - INFO - Voice Robot Backend v2.0 — 前端麦克风接管模式
+2026-07-28 10:39:09,925 - root - INFO -   默认城市: 成都
+2026-07-28 10:39:09,925 - root - INFO -   SSE 端点: /sse
+2026-07-28 10:39:09,925 - root - INFO - ==================================================
+2026-07-28 10:39:15,924 - root - INFO - [System Logging] 日志初始化完成 -> 后端日志: D:\projects\xiaoan\voice_robot\logs\backend\backend.log | 前端日志: D:\projects\xiaoan\voice_robot\logs\frontend\frontend.log (按天切割，保留60天)
+2026-07-28 10:39:15,924 - root - INFO - ==================================================
+2026-07-28 10:39:15,924 - root - INFO - Voice Robot Backend v2.0 — 前端麦克风接管模式
+2026-07-28 10:39:15,924 - root - INFO -   默认城市: 成都
+2026-07-28 10:39:15,924 - root - INFO -   SSE 端点: /sse
+2026-07-28 10:39:15,925 - root - INFO - ==================================================
+2026-07-28 10:39:22,338 - root - INFO - [System Logging] 日志初始化完成 -> 后端日志: D:\projects\xiaoan\voice_robot\logs\backend\backend.log | 前端日志: D:\projects\xiaoan\voice_robot\logs\frontend\frontend.log (按天切割，保留60天)
+2026-07-28 10:39:22,339 - root - INFO - ==================================================
+2026-07-28 10:39:22,339 - root - INFO - Voice Robot Backend v2.0 — 前端麦克风接管模式
+2026-07-28 10:39:22,339 - root - INFO -   默认城市: 成都
+2026-07-28 10:39:22,339 - root - INFO -   SSE 端点: /sse
+2026-07-28 10:39:22,339 - root - INFO - ==================================================
+2026-07-28 10:39:30,356 - root - INFO - [System Logging] 日志初始化完成 -> 后端日志: D:\projects\xiaoan\voice_robot\logs\backend\backend.log | 前端日志: D:\projects\xiaoan\voice_robot\logs\frontend\frontend.log (按天切割，保留60天)
+2026-07-28 10:39:30,356 - root - INFO - ==================================================
+2026-07-28 10:39:30,356 - root - INFO - Voice Robot Backend v2.0 — 前端麦克风接管模式
+2026-07-28 10:39:30,356 - root - INFO -   默认城市: 成都
+2026-07-28 10:39:30,356 - root - INFO -   SSE 端点: /sse
+2026-07-28 10:39:30,356 - root - INFO - ==================================================
+2026-07-28 10:39:36,579 - root - INFO - [System Logging] 日志初始化完成 -> 后端日志: D:\projects\xiaoan\voice_robot\logs\backend\backend.log | 前端日志: D:\projects\xiaoan\voice_robot\logs\frontend\frontend.log (按天切割，保留60天)
+2026-07-28 10:39:36,580 - root - INFO - ==================================================
+2026-07-28 10:39:36,580 - root - INFO - Voice Robot Backend v2.0 — 前端麦克风接管模式
+2026-07-28 10:39:36,580 - root - INFO -   默认城市: 成都
+2026-07-28 10:39:36,580 - root - INFO -   SSE 端点: /sse
+2026-07-28 10:39:36,580 - root - INFO - ==================================================
+2026-07-28 10:39:40,027 - root - INFO - [System Logging] 日志初始化完成 -> 后端日志: D:\projects\xiaoan\voice_robot\logs\backend\backend.log | 前端日志: D:\projects\xiaoan\voice_robot\logs\frontend\frontend.log (按天切割，保留60天)
+2026-07-28 10:39:40,027 - root - INFO - ==================================================
+2026-07-28 10:39:40,027 - root - INFO - Voice Robot Backend v2.0 — 前端麦克风接管模式
+2026-07-28 10:39:40,027 - root - INFO -   默认城市: 成都
+2026-07-28 10:39:40,027 - root - INFO -   SSE 端点: /sse
+2026-07-28 10:39:40,027 - root - INFO - ==================================================
+2026-07-28 10:39:44,653 - root - INFO - [System Logging] 日志初始化完成 -> 后端日志: D:\projects\xiaoan\voice_robot\logs\backend\backend.log | 前端日志: D:\projects\xiaoan\voice_robot\logs\frontend\frontend.log (按天切割，保留60天)
+2026-07-28 10:39:44,654 - root - INFO - ==================================================
+2026-07-28 10:39:44,654 - root - INFO - Voice Robot Backend v2.0 — 前端麦克风接管模式
+2026-07-28 10:39:44,654 - root - INFO -   默认城市: 成都
+2026-07-28 10:39:44,654 - root - INFO -   SSE 端点: /sse
+2026-07-28 10:39:44,654 - root - INFO - ==================================================
+2026-07-28 10:39:56,158 - root - INFO - [System Logging] 日志初始化完成 -> 后端日志: D:\projects\xiaoan\voice_robot\logs\backend\backend.log | 前端日志: D:\projects\xiaoan\voice_robot\logs\frontend\frontend.log (按天切割，保留60天)
+2026-07-28 10:39:56,158 - root - INFO - ==================================================
+2026-07-28 10:39:56,158 - root - INFO - Voice Robot Backend v2.0 — 前端麦克风接管模式
+2026-07-28 10:39:56,158 - root - INFO -   默认城市: 成都
+2026-07-28 10:39:56,159 - root - INFO -   SSE 端点: /sse
+2026-07-28 10:39:56,159 - root - INFO - ==================================================
+2026-07-28 10:40:01,776 - root - INFO - [System Logging] 日志初始化完成 -> 后端日志: D:\projects\xiaoan\voice_robot\logs\backend\backend.log | 前端日志: D:\projects\xiaoan\voice_robot\logs\frontend\frontend.log (按天切割，保留60天)
+2026-07-28 10:40:01,776 - root - INFO - ==================================================
+2026-07-28 10:40:01,776 - root - INFO - Voice Robot Backend v2.0 — 前端麦克风接管模式
+2026-07-28 10:40:01,776 - root - INFO -   默认城市: 成都
+2026-07-28 10:40:01,776 - root - INFO -   SSE 端点: /sse
+2026-07-28 10:40:01,776 - root - INFO - ==================================================
+2026-07-28 10:40:20,882 - root - INFO - [System Logging] 日志初始化完成 -> 后端日志: D:\projects\xiaoan\voice_robot\logs\backend\backend.log | 前端日志: D:\projects\xiaoan\voice_robot\logs\frontend\frontend.log (按天切割，保留60天)
+2026-07-28 10:40:20,882 - root - INFO - ==================================================
+2026-07-28 10:40:20,882 - root - INFO - Voice Robot Backend v2.0 — 前端麦克风接管模式
+2026-07-28 10:40:20,882 - root - INFO -   默认城市: 成都
+2026-07-28 10:40:20,882 - root - INFO -   SSE 端点: /sse
+2026-07-28 10:40:20,882 - root - INFO - ==================================================
+2026-07-28 10:40:26,905 - root - INFO - [System Logging] 日志初始化完成 -> 后端日志: D:\projects\xiaoan\voice_robot\logs\backend\backend.log | 前端日志: D:\projects\xiaoan\voice_robot\logs\frontend\frontend.log (按天切割，保留60天)
+2026-07-28 10:40:26,906 - root - INFO - ==================================================
+2026-07-28 10:40:26,906 - root - INFO - Voice Robot Backend v2.0 — 前端麦克风接管模式
+2026-07-28 10:40:26,906 - root - INFO -   默认城市: 成都
+2026-07-28 10:40:26,906 - root - INFO -   SSE 端点: /sse
+2026-07-28 10:40:26,906 - root - INFO - ==================================================
+2026-07-28 10:40:33,483 - root - INFO - [System Logging] 日志初始化完成 -> 后端日志: D:\projects\xiaoan\voice_robot\logs\backend\backend.log | 前端日志: D:\projects\xiaoan\voice_robot\logs\frontend\frontend.log (按天切割，保留60天)
+2026-07-28 10:40:33,484 - root - INFO - ==================================================
+2026-07-28 10:40:33,484 - root - INFO - Voice Robot Backend v2.0 — 前端麦克风接管模式
+2026-07-28 10:40:33,484 - root - INFO -   默认城市: 成都
+2026-07-28 10:40:33,484 - root - INFO -   SSE 端点: /sse
+2026-07-28 10:40:33,484 - root - INFO - ==================================================
+2026-07-28 10:40:43,140 - root - INFO - [System Logging] 日志初始化完成 -> 后端日志: D:\projects\xiaoan\voice_robot\logs\backend\backend.log | 前端日志: D:\projects\xiaoan\voice_robot\logs\frontend\frontend.log (按天切割，保留60天)
+2026-07-28 10:40:43,140 - root - INFO - ==================================================
+2026-07-28 10:40:43,140 - root - INFO - Voice Robot Backend v2.0 — 前端麦克风接管模式
+2026-07-28 10:40:43,140 - root - INFO -   默认城市: 成都
+2026-07-28 10:40:43,140 - root - INFO -   SSE 端点: /sse
+2026-07-28 10:40:43,140 - root - INFO - ==================================================
+2026-07-28 10:40:49,492 - root - INFO - [System Logging] 日志初始化完成 -> 后端日志: D:\projects\xiaoan\voice_robot\logs\backend\backend.log | 前端日志: D:\projects\xiaoan\voice_robot\logs\frontend\frontend.log (按天切割，保留60天)
+2026-07-28 10:40:49,493 - root - INFO - ==================================================
+2026-07-28 10:40:49,493 - root - INFO - Voice Robot Backend v2.0 — 前端麦克风接管模式
+2026-07-28 10:40:49,493 - root - INFO -   默认城市: 成都
+2026-07-28 10:40:49,493 - root - INFO -   SSE 端点: /sse
+2026-07-28 10:40:49,493 - root - INFO - ==================================================
+2026-07-28 10:41:04,990 - root - INFO - [System Logging] 日志初始化完成 -> 后端日志: D:\projects\xiaoan\voice_robot\logs\backend\backend.log | 前端日志: D:\projects\xiaoan\voice_robot\logs\frontend\frontend.log (按天切割，保留60天)
+2026-07-28 10:41:04,991 - root - INFO - ==================================================
+2026-07-28 10:41:04,991 - root - INFO - Voice Robot Backend v2.0 — 前端麦克风接管模式
+2026-07-28 10:41:04,991 - root - INFO -   默认城市: 成都
+2026-07-28 10:41:04,991 - root - INFO -   SSE 端点: /sse
+2026-07-28 10:41:04,991 - root - INFO - ==================================================
+2026-07-28 10:41:12,436 - root - INFO - [System Logging] 日志初始化完成 -> 后端日志: D:\projects\xiaoan\voice_robot\logs\backend\backend.log | 前端日志: D:\projects\xiaoan\voice_robot\logs\frontend\frontend.log (按天切割，保留60天)
+2026-07-28 10:41:12,436 - root - INFO - ==================================================
+2026-07-28 10:41:12,436 - root - INFO - Voice Robot Backend v2.0 — 前端麦克风接管模式
+2026-07-28 10:41:12,437 - root - INFO -   默认城市: 成都
+2026-07-28 10:41:12,437 - root - INFO -   SSE 端点: /sse
+2026-07-28 10:41:12,437 - root - INFO - ==================================================
+2026-07-28 10:41:15,158 - root - INFO - [System Logging] 日志初始化完成 -> 后端日志: D:\projects\xiaoan\voice_robot\logs\backend\backend.log | 前端日志: D:\projects\xiaoan\voice_robot\logs\frontend\frontend.log (按天切割，保留60天)
+2026-07-28 10:41:16,540 - xiaoan.weather - INFO - [WeatherService] 供应商切换: moji, 供应商数量: 1
+2026-07-28 10:41:17,227 - xiaoan.weather - INFO - [WeatherService] 供应商切换: moji, 供应商数量: 1
+2026-07-28 10:41:17,232 - xiaoan.handlers - INFO - [Tool Call] 🔨 get_weather_forecast -> 参数: {"location_name": "成都", "date": "2026-07-29", "days": 1, "query_types": ["forecast"]}
+2026-07-28 10:41:17,554 - xiaoan.amap - INFO - [高德POI] 命中: 四川省成都市 => (104.066301, 30.572961)
+2026-07-28 10:41:17,554 - xiaoan.handlers - INFO - [Result] 高德地图 POI 解析成功: location='四川省成都市', lng=104.066301, lat=30.572961
+2026-07-28 10:41:17,878 - xiaoan.moji - INFO - [API Call] 墨迹天气-天气预报 -> POST https://aliv8.data.moji.com/whapi/json/aliweather/forecast15days | 参数: {"lat": "30.572961", "lon": "104.066301", "token": "7538f7246218bdbf795b329ab09cc524"}
+2026-07-28 10:41:18,104 - xiaoan.moji - INFO - [API Response] 天气预报返回: {"code": 0, "data": {"city": {"cityId": 3363, "counname": "中国", "ianatimezone": "Asia/Shanghai", "name": "天堂岛海洋乐园", "pname": "四川省", "secondaryname": "成都市", "timezone": "8"}, "forecast": [{"conditionDa... [已折叠，全文共 9968 字符]
+2026-07-28 10:41:18,106 - xiaoan.handlers - INFO - [Tool Result] get_weather_forecast -> Result: {"city": "四川省成都市", "poi_name": "四川省成都市", "province": null, "cityname": null, "adname": null, "date": "2026-07-29", "lng": 104.066301, "lat": 30.572961, "forecast": [{"date": "2026-07-29", "label": "雷阵雨", "icon": "thunder... [已折叠，全文共 470 字符]
+2026-07-28 10:41:42,255 - root - INFO - [System Logging] 日志初始化完成 -> 后端日志: D:\projects\xiaoan\voice_robot\logs\backend\backend.log | 前端日志: D:\projects\xiaoan\voice_robot\logs\frontend\frontend.log (按天切割，保留60天)
+2026-07-28 10:41:42,255 - root - INFO - ==================================================
+2026-07-28 10:41:42,255 - root - INFO - Voice Robot Backend v2.0 — 前端麦克风接管模式
+2026-07-28 10:41:42,255 - root - INFO -   默认城市: 成都
+2026-07-28 10:41:42,255 - root - INFO -   SSE 端点: /sse
+2026-07-28 10:41:42,255 - root - INFO - ==================================================
+2026-07-28 10:42:54,202 - root - INFO - [System Logging] 日志初始化完成 -> 后端日志: D:\projects\xiaoan\voice_robot\logs\backend\backend.log | 前端日志: D:\projects\xiaoan\voice_robot\logs\frontend\frontend.log (按天切割，保留60天)
+2026-07-28 10:42:54,203 - root - INFO - ==================================================
+2026-07-28 10:42:54,203 - root - INFO - Voice Robot Backend v2.0 — 前端麦克风接管模式
+2026-07-28 10:42:54,203 - root - INFO -   默认城市: 成都
+2026-07-28 10:42:54,203 - root - INFO -   SSE 端点: /sse
+2026-07-28 10:42:54,203 - root - INFO - ==================================================
+2026-07-28 10:42:58,501 - root - INFO - [System Logging] 日志初始化完成 -> 后端日志: D:\projects\xiaoan\voice_robot\logs\backend\backend.log | 前端日志: D:\projects\xiaoan\voice_robot\logs\frontend\frontend.log (按天切割，保留60天)
+2026-07-28 10:42:59,850 - xiaoan.weather - INFO - [WeatherService] 供应商切换: moji, 供应商数量: 1
+2026-07-28 10:43:00,000 - xiaoan.handlers - INFO - [Tool Call] 🔨 get_weather_forecast -> 参数: {"location_name": "成都", "date": "2026-07-29", "days": 1, "query_types": ["forecast"]}
+2026-07-28 10:43:00,312 - xiaoan.amap - INFO - [高德POI] 命中: 四川省成都市 => (104.066301, 30.572961)
+2026-07-28 10:43:00,634 - xiaoan.moji - INFO - [API Call] 墨迹天气-天气预报 -> POST https://aliv8.data.moji.com/whapi/json/aliweather/forecast15days | 参数: {"lat": "30.572961", "lon": "104.066301", "token": "7538f7246218bdbf795b329ab09cc524"}
+2026-07-28 10:43:00,806 - xiaoan.moji - INFO - [API Response] 天气预报返回: {"code": 0, "data": {"city": {"cityId": 3363, "counname": "中国", "ianatimezone": "Asia/Shanghai", "name": "天堂岛海洋乐园", "pname": "四川省", "secondaryname": "成都市", "timezone": "8"}, "forecast": [{"conditionDa... [已折叠，全文共 9968 字符]
+2026-07-28 10:43:00,808 - xiaoan.handlers - INFO - [Tool Result] get_weather_forecast -> Result: {"city": "四川省成都市", "poi_name": "四川省成都市", "province": null, "cityname": null, "adname": null, "date": "2026-07-29", "lng": 104.066301, "lat": 30.572961, "forecast": [{"date": "2026-07-29", "label": "雷阵雨", "icon": "thunder... [已折叠，全文共 470 字符]
+2026-07-28 10:44:52,110 - root - INFO - [System Logging] 日志初始化完成 -> 后端日志: D:\projects\xiaoan\voice_robot\logs\backend\backend.log | 前端日志: D:\projects\xiaoan\voice_robot\logs\frontend\frontend.log (按天切割，保留60天)
+2026-07-28 10:44:52,110 - root - INFO - ==================================================
+2026-07-28 10:44:52,110 - root - INFO - Voice Robot Backend v2.0 — 前端麦克风接管模式
+2026-07-28 10:44:52,111 - root - INFO -   默认城市: 成都
+2026-07-28 10:44:52,111 - root - INFO -   SSE 端点: /sse
+2026-07-28 10:44:52,111 - root - INFO - ==================================================
+2026-07-28 10:46:27,853 - root - INFO - [System Logging] 日志初始化完成 -> 后端日志: D:\projects\xiaoan\voice_robot\logs\backend\backend.log | 前端日志: D:\projects\xiaoan\voice_robot\logs\frontend\frontend.log (按天切割，保留60天)
+2026-07-28 10:46:27,853 - root - INFO - ==================================================
+2026-07-28 10:46:27,853 - root - INFO - Voice Robot Backend v2.0 — 前端麦克风接管模式
+2026-07-28 10:46:27,853 - root - INFO -   默认城市: 成都
+2026-07-28 10:46:27,853 - root - INFO -   SSE 端点: /sse
+2026-07-28 10:46:27,854 - root - INFO - ==================================================
+2026-07-28 10:46:36,991 - root - INFO - [System Logging] 日志初始化完成 -> 后端日志: D:\projects\xiaoan\voice_robot\logs\backend\backend.log | 前端日志: D:\projects\xiaoan\voice_robot\logs\frontend\frontend.log (按天切割，保留60天)
+2026-07-28 10:46:36,991 - root - INFO - 🚀 [Backend Service Started] Voice Robot Backend v2.0 | 默认城市: 成都
+2026-07-28 10:46:41,462 - root - INFO - [System Logging] 日志初始化完成 -> 后端日志: D:\projects\xiaoan\voice_robot\logs\backend\backend.log | 前端日志: D:\projects\xiaoan\voice_robot\logs\frontend\frontend.log (按天切割，保留60天)
+2026-07-28 10:46:43,102 - xiaoan.handlers - INFO - [Tool Call] 🔨 get_weather_forecast -> 参数: {"location_name": "成都", "date": "2026-07-29", "days": 1, "query_types": ["forecast"]}
+2026-07-28 10:46:43,406 - xiaoan.amap - INFO - [高德POI] 命中: 四川省成都市 => (104.066301, 30.572961)
+2026-07-28 10:46:43,704 - xiaoan.moji - INFO - [API Call] 墨迹天气-天气预报 -> POST https://aliv8.data.moji.com/whapi/json/aliweather/forecast15days | 参数: {"lat": "30.572961", "lon": "104.066301", "token": "7538f7246218bdbf795b329ab09cc524"}
+2026-07-28 10:46:43,913 - xiaoan.moji - INFO - [API Response] 天气预报返回: {"code": 0, "data": {"city": {"cityId": 285195, "counname": "中国", "ianatimezone": "Asia/Shanghai", "name": "武侯区", "pname": "四川省", "secondaryname": "成都市", "timezone": "8"}, "forecast": [{"conditionDay"... [已折叠，全文共 9938 字符]
+2026-07-28 10:46:43,915 - xiaoan.handlers - INFO - [Tool Result] get_weather_forecast -> Result: {"city": "四川省成都市", "poi_name": "四川省成都市", "province": null, "cityname": null, "adname": null, "date": "2026-07-29", "lng": 104.066301, "lat": 30.572961, "forecast": [{"date": "2026-07-29", "label": "阵雨", "icon": "rainy", ... [已折叠，全文共 454 字符]
+2026-07-28 10:47:28,100 - root - INFO - [Logging] 前后端 60 天日志切割归档已就绪
+2026-07-28 10:47:28,101 - root - INFO - 🚀 [Backend Service Started] Voice Robot Backend v2.0 | 默认城市: 成都
+2026-07-28 10:47:32,790 - root - INFO - [Logging] 前后端 60 天日志切割归档已就绪
+2026-07-28 10:47:34,332 - xiaoan.handlers - INFO - [Tool Call] 🔨 get_weather_forecast -> 参数: {"location_name": "成都", "date": "2026-07-29", "days": 1, "query_types": ["forecast"]}
+2026-07-28 10:47:34,633 - xiaoan.amap - INFO - [高德POI] 命中: 四川省成都市 => (104.066301, 30.572961)
+2026-07-28 10:47:34,924 - xiaoan.moji - INFO - [API Call] 墨迹天气-天气预报 -> POST https://aliv8.data.moji.com/whapi/json/aliweather/forecast15days | 参数: {"lat": "30.572961", "lon": "104.066301", "token": "7538f7246218bdbf795b329ab09cc524"}
+2026-07-28 10:47:35,100 - xiaoan.moji - INFO - [API Response] 天气预报返回: {"code": 0, "data": {"city": {"cityId": 285195, "counname": "中国", "ianatimezone": "Asia/Shanghai", "name": "武侯区", "pname": "四川省", "secondaryname": "成都市", "timezone": "8"}, "forecast": [{"conditionDay"... [已折叠，全文共 9938 字符]
+2026-07-28 10:47:35,102 - xiaoan.handlers - INFO - [Tool Result] get_weather_forecast -> Result: {"city": "四川省成都市", "poi_name": "四川省成都市", "province": null, "cityname": null, "adname": null, "date": "2026-07-29", "lng": 104.066301, "lat": 30.572961, "forecast": [{"date": "2026-07-29", "label": "阵雨", "icon": "rainy", ... [已折叠，全文共 454 字符]
+2026-07-28 10:48:18,473 - root - INFO - [System Logging] 日志初始化完成
+2026-07-28 10:48:18,473 - root - INFO - 🚀 [Backend Service Started] Voice Robot Backend v2.0 | 默认城市: 成都
+2026-07-28 10:53:28,165 - root - INFO - [System Logging] 日志初始化完成
+2026-07-28 10:53:28,166 - root - INFO - 🚀 [Backend Service Started] Voice Robot Backend v2.0 | 默认城市: 成都
+2026-07-28 10:56:49,461 - root - INFO - [System Logging] 日志初始化完成
+2026-07-28 10:56:49,462 - root - INFO - 🚀 [Backend Service Started] Voice Robot Backend v2.0 | 默认城市: 成都
+2026-07-28 14:13:52,789 - xiaoan.qwen_audio_realtime - ERROR - [QwenAudio] 服务端错误: {'type': 'invalid_request_error', 'code': 'invalid_value', 'message': 'Server VAD turn committed but no response was created because a manual response is already in progress.', 'param': 'input_audio_buffer.speech_stopped'}
+2026-07-28 14:13:52,790 - xiaoan.qwen_audio_realtime - WARNING - [QwenAudio] 忽略服务端非致命状态提示: Server VAD turn committed but no response was created because a manual response is already in progress.
+2026-07-28 14:41:44,135 - xiaoan.qwen_audio_realtime - ERROR - [QwenAudio] 服务端错误: {'type': 'invalid_request_error', 'code': 'invalid_value', 'message': 'Conversation has no active response.', 'param': 'response.cancel'}
+2026-07-28 14:41:44,135 - xiaoan.qwen_audio_realtime - WARNING - [QwenAudio] 忽略服务端非致命状态提示: Conversation has no active response.
+2026-07-28 14:44:29,880 - xiaoan.qwen_audio_realtime - ERROR - [QwenAudio] 服务端错误: {'type': 'invalid_request_error', 'code': 'invalid_value', 'message': 'Conversation has no active response.', 'param': 'response.cancel'}
+2026-07-28 14:44:29,881 - xiaoan.qwen_audio_realtime - WARNING - [QwenAudio] 忽略服务端非致命状态提示: Conversation has no active response.
+2026-07-28 14:44:31,954 - xiaoan.qwen_audio_realtime - ERROR - [QwenAudio] 服务端错误: {'type': 'invalid_request_error', 'code': 'invalid_value', 'message': 'Conversation has no active response.', 'param': 'response.cancel'}
+2026-07-28 14:44:31,955 - xiaoan.qwen_audio_realtime - WARNING - [QwenAudio] 忽略服务端非致命状态提示: Conversation has no active response.
+2026-07-28 14:46:56,792 - xiaoan.qwen_audio_realtime - ERROR - [QwenAudio] 服务端错误: {'type': 'invalid_request_error', 'code': 'invalid_value', 'message': 'Conversation has no active response.', 'param': 'response.cancel'}
+2026-07-28 14:46:56,792 - xiaoan.qwen_audio_realtime - WARNING - [QwenAudio] 忽略服务端非致命状态提示: Conversation has no active response.
+2026-07-28 14:46:59,373 - xiaoan.qwen_audio_realtime - ERROR - [QwenAudio] 服务端错误: {'type': 'invalid_request_error', 'code': 'invalid_value', 'message': 'Conversation has no active response.', 'param': 'response.cancel'}
+2026-07-28 14:46:59,373 - xiaoan.qwen_audio_realtime - WARNING - [QwenAudio] 忽略服务端非致命状态提示: Conversation has no active response.
+2026-07-28 14:47:52,150 - xiaoan.qwen_audio_realtime - ERROR - [QwenAudio] 服务端错误: {'type': 'invalid_request_error', 'code': 'invalid_value', 'message': 'Conversation has no active response.', 'param': 'response.cancel'}
+2026-07-28 14:47:52,151 - xiaoan.qwen_audio_realtime - WARNING - [QwenAudio] 忽略服务端非致命状态提示: Conversation has no active response.
+2026-07-28 14:47:54,877 - xiaoan.qwen_audio_realtime - ERROR - [QwenAudio] 服务端错误: {'type': 'invalid_request_error', 'code': 'invalid_value', 'message': 'Conversation has no active response.', 'param': 'response.cancel'}
+2026-07-28 14:47:54,878 - xiaoan.qwen_audio_realtime - WARNING - [QwenAudio] 忽略服务端非致命状态提示: Conversation has no active response.

@@ -1,0 +1,10 @@
+voiceprints
+__pycache__
+备份
+.idea
+backend_jiashan
+node_modules
+scratch
+dist
+sherpa
+.venv

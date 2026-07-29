@@ -115,6 +115,12 @@ app.add_middleware(
 
 app.include_router(weather_router)
 
+from fastapi.staticfiles import StaticFiles
+
+assets_dir = Path(__file__).parent / "assets"
+if assets_dir.exists():
+    app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="assets")
+
 
 
 
@@ -974,19 +980,94 @@ async def get_device_id():
     return {"device_id": device_id}
 
 
-@app.get("/audio/zai.wav")
-def get_zai_audio(voice: str = "Tina"):
-    from fastapi.responses import FileResponse
-    from pathlib import Path
-    audio_path = (Path(__file__).parent / "assets" / f"zai_{voice}.wav").resolve()
-    if audio_path.exists():
-        return FileResponse(audio_path, media_type="audio/wav")
-    # Fallback to default Tina voice
-    fallback_path = (Path(__file__).parent / "assets" / "zai_Tina.wav").resolve()
-    if fallback_path.exists():
-        return FileResponse(fallback_path, media_type="audio/wav")
-    from fastapi import HTTPException
-    raise HTTPException(status_code=404, detail="Audio file not found")
+
+
+
+# ──────────────────────────────────────────────
+# 用户信息 (含聚焦城市/地区、租户、组织、用户等) 动态接口
+# ──────────────────────────────────────────────
+OVERRIDE_CITY: Optional[str] = None
+USER_INFO_OVERRIDE: dict = {}
+
+async def resolve_effective_city(config_city: Optional[str] = None) -> tuple[str, str]:
+    """
+    按优先级解析当前有效聚焦城市：
+    1. OVERRIDE_CITY (HTTP 接口动态传入 areaName - 最高优先级)
+    2. config_city / 本地配置文件中的设置 (中优先级)
+    3. IP 自动获取 (保底)
+    返回: (city_name, priority_source)
+    """
+    global OVERRIDE_CITY
+    if OVERRIDE_CITY and OVERRIDE_CITY.strip():
+        return OVERRIDE_CITY.strip(), "HTTP API Override"
+
+    if config_city and config_city.strip():
+        return config_city.strip(), "Local Config"
+
+    from backend.utils import get_city_by_ip
+    ip_city = await get_city_by_ip()
+    return ip_city, "IP Auto-Location"
+
+
+class UserInfoUpdateRequest(BaseModel):
+    timestamp: Optional[str] = None
+    tenantId: Optional[str] = None
+    userId: Optional[str] = None
+    orgId: Optional[str] = None
+    tenantType: Optional[str] = None
+    areaCode: Optional[str] = None
+    tenantName: Optional[str] = None
+    userName: Optional[str] = None
+    orgName: Optional[str] = None
+    tenantTypeName: Optional[str] = None
+    areaName: Optional[str] = None
+
+@app.post("/api/user_info")
+async def update_user_info(req: UserInfoUpdateRequest):
+    global OVERRIDE_CITY, USER_INFO_OVERRIDE
+
+    req_dict = req.model_dump(exclude_unset=True)
+    USER_INFO_OVERRIDE.update(req_dict)
+
+    # 优先提取 areaName 作为聚焦城市
+    target_city = req.areaName.strip() if req.areaName and req.areaName.strip() else None
+    if target_city:
+        OVERRIDE_CITY = target_city
+
+    effective_city, priority_source = await resolve_effective_city()
+    logger.info(f"👤 [用户信息接口] 收到 POST 更新请求: areaName='{req.areaName}', userName='{req.userName}', orgName='{req.orgName}', effective_city='{effective_city}'")
+
+    # 1. 广播全量用户信息消息
+    info_payload = {
+        "type": "user_info_update",
+        **USER_INFO_OVERRIDE,
+        "effective_city": effective_city,
+        "priority_source": priority_source
+    }
+    await visual_broadcast_manager.broadcast(info_payload)
+
+    # 2. 若更新了区域/城市，自动联动触发天气刷新广播
+    if target_city:
+        try:
+            from backend.weather_router import get_weather
+            weather_info = await get_weather(effective_city)
+            await visual_broadcast_manager.broadcast({
+                "type": "weather_data",
+                "data": weather_info
+            })
+        except Exception as e:
+            logger.warning(f"[UserInfoUpdate] 实时触发天气查询失败: {e}")
+
+    return {
+        "status": "success",
+        "user_info": {
+            **USER_INFO_OVERRIDE,
+            "effective_city": effective_city,
+            "priority_source": priority_source
+        }
+    }
+
+
 
 # ──────────────────────────────────────────────
 # 启动与关闭已迁移至顶部 lifespan() 函数

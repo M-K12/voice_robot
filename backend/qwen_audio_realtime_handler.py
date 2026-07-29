@@ -136,7 +136,7 @@ class QwenAudioRealtimeClient:
         logger.info(f"[QwenAudio] Connecting to {url} (model={self.model} voice={self.voice} turn={self.turn_mode.value})")
         self.ws = await websockets.connect(
             url, extra_headers=headers,
-            open_timeout=30, ping_interval=20, ping_timeout=20, close_timeout=10,
+            open_timeout=30, ping_interval=20, ping_timeout=20, close_timeout=1,
         )
         session_config: Dict[str, Any] = {
             "modalities": ["text", "audio"],
@@ -428,7 +428,7 @@ async def handle_qwen_audio_realtime_session(
     接管 qwen-audio-3.0-realtime-plus / flash 端到端全双工语音会话主循环。
     与 OmniRealtimeClient / Xunfei / Sherpa 完全独立，不共享任何代码路径。
     """
-    from backend.utils import get_tool_calling_mode, normalize_tool_name
+    from backend.utils import get_tool_calling_mode, normalize_tool_name, is_exit_intent, is_wake_word, send_session_hangup
     from backend.tools import GLOBAL_TOOLS_SCHEMA, get_instructions, ToolContext, execute_tool
 
     api_key = os.getenv("DASHSCOPE_API_KEY", "")
@@ -562,9 +562,11 @@ async def handle_qwen_audio_realtime_session(
             return
         hangup_sent = True
         session_active = False
-        await _send_safe({"type": "hangup"})
-        await visual_broadcast_manager.broadcast({"type": "interrupted"})
-        await visual_broadcast_manager.broadcast({"type": "state_change", "state": "idle"})
+        await send_session_hangup(
+            websocket=websocket,
+            visual_broadcast_manager=visual_broadcast_manager,
+            client=client
+        )
 
     def on_interrupt():
         nonlocal audio_active, expecting_weather_summary, speech_start_time
@@ -591,15 +593,13 @@ async def handle_qwen_audio_realtime_session(
         if not is_final:
             return
 
-        exit_keywords = ["退下", "去休息吧", "退出", "挂断", "再见", "拜拜", "别说了", "闭嘴", "滚蛋"]
-        if is_final and any(kw in text for kw in exit_keywords):
+        if is_final and is_exit_intent(text):
             logger.info(f"[QwenAudio] 退出指令 '{text}'")
             await _send_hangup()
             return
 
         # 唤醒词文本打断拦截：当 ASR 结果单独为唤醒词时，立刻重置会话并保持倾听，避免模型回答“我在呢”
-        wake_words = ["小安小安", "小安小安。", "小安", "小安。"]
-        if is_final and text.strip() in wake_words:
+        if is_final and is_wake_word(text):
             logger.info(f"⚡ [QwenAudio ASR 唤醒打断] 捕获到单句唤醒词 '{text}'，立刻打断并重置为倾听状态！")
             on_interrupt()
             client._audio_suppressed = True  # 物理全屏蔽：拦截该次及随后的任何音频与文本！
@@ -983,8 +983,8 @@ async def handle_qwen_audio_realtime_session(
                     pass
         msg_task.cancel()
 
-    except WebSocketDisconnect:
-        logger.info("[QwenAudio] 前端 WebSocket 断开")
+    except (WebSocketDisconnect, websockets.exceptions.ConnectionClosed):
+        logger.info("[QwenAudio] 前端 WebSocket 正常断开")
     except RuntimeError as e:
         if "receive" in str(e) or "disconnect" in str(e):
             logger.info(f"[QwenAudio] WebSocket 正常断开 ({e})")

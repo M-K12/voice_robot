@@ -1,7 +1,14 @@
+import re
 import json
 import httpx
+import asyncio
+import logging
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Any, List
+from fastapi import WebSocket
+from starlette.websockets import WebSocketState
+
+logger = logging.getLogger("xiaoan.utils")
 
 _CITY_TO_AREACODE = {}
 _AREACODE_TO_STATION = {}
@@ -40,6 +47,25 @@ def get_city_lonlat(city: str) -> Optional[list[float]]:
     if lat is not None and lon is not None:
         return [lon, lat]
     return None
+
+
+async def get_city_by_ip() -> str:
+    """通过 IP 自动定位当前所在城市 (保底获取)"""
+    try:
+        async with httpx.AsyncClient(timeout=3.0) as client:
+            res = await client.get("http://ip-api.com/json/?lang=zh-CN")
+            if res.status_code == 200:
+                data = res.json()
+                city = data.get("city", "")
+                if city:
+                    clean_city = city.strip()
+                    if not clean_city.endswith("市") and not clean_city.endswith("县"):
+                        clean_city += "市"
+                    logger.info(f"[IP Location] 成功自动识别当前 IP 所在城市: {clean_city}")
+                    return clean_city
+    except Exception as e:
+        logger.warning(f"[IP Location] 通过 IP 自动获取城市失败，使用保底城市: {e}")
+    return "北京市"
 
 def clean_echo_text(text: str, last_ai_summary: str) -> str:
     """Clean user input by removing overlap with the last AI summary text to avoid echo."""
@@ -658,6 +684,76 @@ def normalize_tool_name(name: str) -> str:
     if name_lower in ["query_history_disasters", "query_disasters", "history_disasters", "get_history_disasters"]:
         return "query_history_disasters"
     return name
+
+
+# ──────────────────────────────────────────────
+# 通用唤醒词与会话挂断控制
+# ──────────────────────────────────────────────
+WAKE_WORDS = ["小安", "小安小安", "你好小安", "小安你好"]
+
+def is_wake_word(text: str) -> bool:
+    """判断转写文本去掉标点后是否仅仅是一个单句唤醒词"""
+    if not text or not isinstance(text, str):
+        return False
+    # 剥离所有标点符号与非中英文界符
+    clean_text = re.sub(r"[^\w\u4e00-\u9fa5]", "", text.strip())
+    return clean_text in WAKE_WORDS
+
+EXIT_KEYWORDS = [
+    "退下", "退一下", "退下吧", "退吧", "去休息吧", "休息吧", 
+    "退出", "挂断", "再见", "拜拜", "别说了", "闭嘴", "滚蛋", "先这样", "告辞"
+]
+
+def is_exit_intent(text: str) -> bool:
+    """判断转写文本是否包含退出/告别意图"""
+    if not text or not isinstance(text, str):
+        return False
+    clean_text = text.strip()
+    return any(kw in clean_text for kw in EXIT_KEYWORDS)
+
+
+async def send_session_hangup(
+    websocket: Optional[WebSocket] = None,
+    visual_broadcast_manager: Any = None,
+    client: Optional[Any] = None,
+    text: str = "再见",
+    reason: str = "捕获到退出关键词，直接挂断会话"
+) -> None:
+    """
+    通用底层挂断控制：
+    1. 发送 hangup 信号触发前端气泡展示“再见”与播放 exit_female.wav
+    2. 推送 debug_event 调试事件
+    3. 将大屏广播状态切换至 idle
+    4. 立即异步关闭底层模型的 WebSocket Client
+    """
+    if websocket:
+        try:
+            if websocket.client_state == WebSocketState.CONNECTED:
+                await websocket.send_json({"type": "hangup", "text": text})
+                await websocket.send_json({
+                    "type": "debug_event",
+                    "step": "intent",
+                    "content": reason
+                })
+        except Exception as e:
+            logger.warning(f"[SessionHangup] 发送 WebSocket 挂断消息失败: {e}")
+
+    if visual_broadcast_manager:
+        try:
+            await visual_broadcast_manager.broadcast({"type": "subtitle", "text": text})
+            await visual_broadcast_manager.broadcast({"type": "interrupted"})
+            await visual_broadcast_manager.broadcast({"type": "state_change", "state": "idle"})
+        except Exception as e:
+            logger.warning(f"[SessionHangup] 广播退出状态失败: {e}")
+
+    if client and hasattr(client, "close"):
+        try:
+            if asyncio.iscoroutinefunction(client.close):
+                asyncio.create_task(client.close())
+            else:
+                client.close()
+        except Exception as e:
+            logger.warning(f"[SessionHangup] 关闭底层 Client 失败: {e}")
 
 
 

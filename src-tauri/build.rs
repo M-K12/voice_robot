@@ -2,6 +2,7 @@ use std::env;
 use std::path::PathBuf;
 
 fn main() {
+    println!("cargo:rustc-check-cfg=cfg(mobile)");
     tauri_build::build();
 
     // 如果用户已经手动设置了 SHERPA_ONNX_LIB_DIR，则优先使用用户的设置

@@ -1,6 +1,6 @@
 {
     "value": "qwen-audio-3.0-realtime-plus",
-    "label": "千问 Audio 3.0 实时语音 (Plus)",
+    "label": "qwen-audio-3.0-realtime-plus",
     "current_voice": "longanqian",
     "voice_options": [
         {

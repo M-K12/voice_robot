@@ -115,26 +115,50 @@ function checkHasTauri() {
   return typeof window !== 'undefined' && (!!window.__TAURI__ || !!window.__tauri_ipc__);
 }
 
+let isStarting = false
+
 async function startListening() {
-  if (isListening.value) return;
+  if (isListening.value || isStarting) return;
+  isStarting = true;
   
   const isTauriEnv = checkHasTauri();
   emit('debug', `[KWS] 准备启动监听，modelPath=${props.modelPath}，isTauriEnv=${isTauriEnv}`)
   
   if (!isTauriEnv) {
     emit('debug', '[KWS] 启动被忽略：未检测到 Tauri 宿主环境（可能在纯浏览器中运行）。')
+    isStarting = false;
     return;
   }
   try {
-    if (!unlistenFn) {
-      unlistenFn = await tauriListen('wake-word-detected', (event) => {
-        emit('debug', `[KWS] 收到底层唤醒事件：payload=${event.payload}`)
-        justDetected.value = true
-        emit('wake', event.payload)
-        clearTimeout(detectedTimer)
-        detectedTimer = setTimeout(() => { justDetected.value = false }, 2500)
-      })
+    if (typeof window !== 'undefined' && window.__kws_unlisten_fn__) {
+      try { window.__kws_unlisten_fn__() } catch (e) {}
+      window.__kws_unlisten_fn__ = null
     }
+    if (unlistenFn) {
+      try { unlistenFn() } catch (e) {}
+      unlistenFn = null
+    }
+    const currentUnlisten = await tauriListen('wake-word-detected', (event) => {
+      if (props.inCall) {
+        emit('debug', `[Interrupt] 收到底层打断事件：payload=${event.payload}`)
+      } else {
+        emit('debug', `[KWS] 收到底层唤醒事件：payload=${event.payload}`)
+      }
+      justDetected.value = true
+      emit('wake', event.payload)
+      clearTimeout(detectedTimer)
+      detectedTimer = setTimeout(() => { justDetected.value = false }, 2500)
+    })
+
+    // 监听后台异步加载状态
+    tauriListen('kws-status', (event) => {
+      emit('debug', `[KWS 引擎状态更新] ${event.payload}`)
+    })
+
+    if (typeof window !== 'undefined') {
+      window.__kws_unlisten_fn__ = currentUnlisten
+    }
+    unlistenFn = currentUnlisten
 
     emit('debug', '[KWS] 正在调用 Rust start_wake_word...')
     await tauriInvoke('start_wake_word', {
@@ -145,11 +169,13 @@ async function startListening() {
       keywordsScore: props.kwsScore,
       keywordsThreshold: props.kwsThreshold,
     })
-    emit('debug', `[KWS] Rust start_wake_word 调用成功！max_active_paths=${props.kwsMaxActivePaths}, score=${props.kwsScore}, threshold=${props.kwsThreshold}`)
+    emit('debug', `[KWS] Rust start_wake_word 已成功提交后台异步加载！max_active_paths=${props.kwsMaxActivePaths}, score=${props.kwsScore}, threshold=${props.kwsThreshold}`)
     isListening.value = true
   } catch (e) {
     emit('debug', `[KWS] 启动失败！Rust 抛出异常：${e}`)
     if (unlistenFn) { unlistenFn(); unlistenFn = null }
+  } finally {
+    isStarting = false;
   }
 }
 

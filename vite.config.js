@@ -5,7 +5,7 @@ export default defineConfig({
   plugins: [vue()],
   // Tauri 期望固定端口用于 devUrl
   server: {
-    port: 5173,
+    port: 8173,
     strictPort: true,
     host: '127.0.0.1',
   },
@@ -16,6 +16,11 @@ export default defineConfig({
     target: ['es2021', 'chrome105', 'safari15'],
     minify: !process.env.TAURI_DEBUG ? 'esbuild' : false,
     sourcemap: !!process.env.TAURI_DEBUG,
+    cssCodeSplit: true,
+    chunkSizeWarningLimit: 1000,
+  },
+  esbuild: {
+    drop: process.env.TAURI_DEBUG ? [] : ['console', 'debugger'],
   },
   clearScreen: false,
   envPrefix: ['VITE_', 'TAURI_'],

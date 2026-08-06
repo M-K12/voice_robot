@@ -7,11 +7,11 @@ from pathlib import Path
 from typing import Optional, List, Dict, Any
 from fastapi import WebSocket
 
-from backend.sse_hub import sse_hub
-from backend.weather_service import weather_service
-from backend.knowledge_service import KnowledgeService
-from backend.address_corrector import AddressCorrector
-from backend.amap_service import amap_service
+from sse_hub import sse_hub
+from weather_service import weather_service
+from knowledge_service import KnowledgeService
+from address_corrector import AddressCorrector
+from amap_service import amap_service
 
 logger = logging.getLogger("xiaoan.handlers")
 
@@ -98,6 +98,22 @@ async def execute_tool(name: str, arguments_str: str, ctx: ToolContext) -> str:
             except Exception as e:
                 logger.error(f"[Error] 高德地图 POI 解析异常: {e}")
 
+            # ⚡ 高德接口确认地理信息后，立刻无延迟推送大屏定位与经纬度悬浮！
+            instant_ctrl_data = {
+                "place": location,
+                "lng": real_lon,
+                "lat": real_lat,
+                "elements": args.get("elements", ""),
+                "elements_colloquial": args.get("elements_colloquial", "")
+            }
+            try:
+                from visual_manager import visual_broadcast_manager
+                await visual_broadcast_manager.broadcast({"type": "control_command", "data": instant_ctrl_data})
+                if real_lon and real_lat:
+                    await visual_broadcast_manager.broadcast({"type": "query_info", "data": {"lonLat": [real_lon, real_lat], "address": location}})
+            except Exception as e:
+                logger.error(f"[Handlers] Immediate POI broadcast failed: {e}")
+
             original_date = args.get("date", "")
             raw_date = address_corrector.correct_general(original_date)
             if raw_date != original_date:
@@ -143,7 +159,7 @@ async def execute_tool(name: str, arguments_str: str, ctx: ToolContext) -> str:
                 "time_standard_end": end_time_str,
                 "duration": duration_str,
                 "elements": req_elem,
-                "elements_colloquial": ""
+                "elements_colloquial": args.get("elements_colloquial", "")
             }
             await sse_hub.broadcast("control_command", ctrl_data)
             if ctx.websocket:
@@ -170,14 +186,14 @@ async def execute_tool(name: str, arguments_str: str, ctx: ToolContext) -> str:
                 if ctx.websocket: await ctx.websocket.send_json({"type": "weather_data", "city": location, "data": weather_data})
                 ctx.expecting_weather_summary = True
                 try:
-                    from backend.main import visual_broadcast_manager
+                    from visual_manager import visual_broadcast_manager
                     import asyncio
                     asyncio.create_task(visual_broadcast_manager.broadcast({
-                        "type": "weather_update",
+                        "type": "weather_data",
                         "data": weather_data
                     }))
                 except Exception as e:
-                    logger.error(f"[Handlers] Broadcast weather_update failed: {e}")
+                    logger.error(f"[Handlers] Broadcast weather_data failed: {e}")
                 tool_result_content = weather_data
             else:
                 tool_result_content = {
@@ -229,11 +245,29 @@ async def execute_tool(name: str, arguments_str: str, ctx: ToolContext) -> str:
             except Exception:
                 pass
 
+            # ⚡ 高德接口确认地理信息后，立刻无延迟推送大屏图层控制指令！
+            instant_ctrl_data = {
+                "place": location,
+                "lng": real_lon,
+                "lat": real_lat,
+                "elements": layer,
+                "elements_colloquial": args.get("elements_colloquial") or raw_layer,
+                "type": "show_layer"
+            }
+            try:
+                from visual_manager import visual_broadcast_manager
+                await visual_broadcast_manager.broadcast({"type": "control_command", "data": instant_ctrl_data})
+                if real_lon and real_lat:
+                    await visual_broadcast_manager.broadcast({"type": "query_info", "data": {"lonLat": [real_lon, real_lat], "address": location}})
+            except Exception as e:
+                logger.error(f"[Handlers] Immediate POI broadcast failed: {e}")
+
             ctrl_data = {
                 "place": location,
                 "lng": real_lon,
                 "lat": real_lat,
                 "elements": layer,
+                "elements_colloquial": args.get("elements_colloquial") or raw_layer,
                 "type": "show_layer"
             }
             await sse_hub.broadcast("control_command", ctrl_data)
@@ -417,11 +451,11 @@ async def execute_tool(name: str, arguments_str: str, ctx: ToolContext) -> str:
 
         elif name == "hangup":
             try:
-                from backend.main import visual_broadcast_manager
+                from visual_manager import visual_broadcast_manager
             except Exception:
                 visual_broadcast_manager = None
 
-            from backend.utils import send_session_hangup
+            from utils import send_session_hangup
             await send_session_hangup(
                 websocket=ctx.websocket,
                 visual_broadcast_manager=visual_broadcast_manager,

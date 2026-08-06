@@ -75,4 +75,4 @@ async def get_weather_text(city: str = Query(..., description="需要查询的�
 if __name__ == "__main__":
     if sys.platform == "win32":
         asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
-    uvicorn.run("weather_api:app", host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run("weather_api:app", host="0.0.0.0", port=8000)

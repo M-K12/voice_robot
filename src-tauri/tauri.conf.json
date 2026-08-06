@@ -2,10 +2,10 @@
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "voice-robot",
   "version": "0.1.0",
-  "identifier": "com.tauri.dev",
+  "identifier": "com.xiaoan.voice-robot",
   "build": {
     "frontendDist": "../dist",
-    "devUrl": "http://127.0.0.1:5173",
+    "devUrl": "http://127.0.0.1:8173",
     "beforeDevCommand": "npm run dev",
     "beforeBuildCommand": "npm run build"
   },
@@ -13,11 +13,26 @@
     "withGlobalTauri": true,
     "windows": [
       {
+        "label": "main",
         "title": "小安 AI 语音机器人",
         "width": 1024,
         "height": 768,
         "fullscreen": false,
-        "resizable": true
+        "resizable": true,
+        "additionalBrowserArgs": "--use-fake-ui-for-media-stream --disable-gpu --disable-gpu-compositing --disable-gpu-rasterization --disable-accelerated-2d-canvas --disable-background-networking --disable-component-update --disable-domain-reliability --disable-sync --renderer-process-limit=1"
+      },
+      {
+        "label": "settings",
+        "title": "小安 - 系统设置",
+        "url": "?page=settings",
+        "width": 640,
+        "height": 600,
+        "resizable": false,
+        "alwaysOnTop": true,
+        "decorations": true,
+        "center": true,
+        "visible": false,
+        "additionalBrowserArgs": "--use-fake-ui-for-media-stream --disable-gpu --disable-gpu-compositing --disable-gpu-rasterization --disable-accelerated-2d-canvas --disable-background-networking --disable-component-update --disable-domain-reliability --disable-sync --renderer-process-limit=1"
       }
     ],
     "security": {
@@ -26,7 +41,7 @@
   },
   "bundle": {
     "active": true,
-    "targets": "all",
+    "targets": ["deb"],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

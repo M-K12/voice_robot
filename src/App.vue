@@ -33,6 +33,14 @@
               <input v-model="settings.defaultCity" type="text" class="form-input" placeholder="成都" />
               <span class="form-help">当对话中未显式提及城市名时的天气聚焦城市。</span>
             </div>
+            <div class="form-group" style="margin-top: 10px;">
+              <label class="form-label">大屏视觉端类别 (Visual Terminal UI)</label>
+              <select v-model="settings.visualTerminal" class="form-select">
+                <option value="demo_ui">demo_ui</option>
+                <option value="app_ui">app_ui</option>
+              </select>
+              <span class="form-help">控制后端通过 WebSocket 广播给大屏端的数据指令协议标准 (demo_ui / app_ui)。</span>
+            </div>
             <div class="form-group checkbox-group" style="margin-top: 10px; padding: 4px 0;">
               <div style="display: flex; align-items: center; gap: 10px;">
                 <input v-model="isStartFullscreen" type="checkbox" id="isStartFullscreenCheckboxSettings" class="form-checkbox" @change="onStartFullscreenChange" />
@@ -804,6 +812,14 @@
                   <input v-model="settings.defaultCity" type="text" class="form-input" placeholder="成都" />
                   <span class="form-help">当对话中未显式提及城市名时的天气聚焦城市。</span>
                 </div>
+                <div class="form-group" style="margin-top: 10px;">
+                  <label class="form-label" style="font-weight: 600; color: #60a5fa;">大屏视觉端类别 (Visual Terminal UI)</label>
+                  <select v-model="settings.visualTerminal" class="form-select">
+                    <option value="demo_ui">demo_ui</option>
+                    <option value="app_ui">app_ui</option>
+                  </select>
+                  <span class="form-help">控制后端通过 WebSocket 广播给大屏端的数据指令协议标准 (demo_ui / app_ui)。</span>
+                </div>
 
                 <div class="form-group checkbox-group" style="margin-top: 10px; padding: 4px 0;">
                   <div style="display: flex; align-items: center; gap: 10px;">
@@ -818,7 +834,7 @@
                     <label for="enableVisualBroadcast" class="checkbox-title">开启大屏视觉端同步广播</label>
                   </div>
                   <p class="checkbox-desc">
-                    开启后，文字、天气面板、地图缩放等交互控制指令会通过独立的 WebSocket 管道广播投递给三维地理大屏网页端，进行无缝的视觉联动展示。
+                    开启后，交互控制指令会通过独立的 WebSocket 管道广播投递给大屏端，进行无缝视觉联动。
                   </p>
                 </div>
                 <div class="form-group checkbox-group" style="margin-top: 10px; padding: 4px 0;">
@@ -1451,17 +1467,21 @@ import { invoke as _tauriInvokeRaw } from '@tauri-apps/api/core'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { logger } from './utils/logger'
 
-// 判定当前是否为独立设置窗口
-const isSettingsWindow = ref(typeof window !== 'undefined' && window.location.search.includes('page=settings'))
-
 // ── Tauri invoke（Tauri 环境下为真实 invoke，纯浏览器下为 null）
 const isTauriEnvCheck = typeof window !== 'undefined' && !!(window.__TAURI__ || window.__tauri_ipc__)
 const tauriInvoke = isTauriEnvCheck ? _tauriInvokeRaw : null
 const appWindow = isTauriEnvCheck ? getCurrentWindow() : null
+
+// 判定当前是否为独立设置窗口（兼容 URL query 参数与 Tauri 窗口 label 判定）
+const isSettingsWindow = ref(
+  (typeof window !== 'undefined' && window.location.search.includes('page=settings')) ||
+  (appWindow && appWindow.label === 'settings')
+)
 const emitEvent = isTauriEnvCheck ? tauriEmit : null
 
-// ── 仅在 Tauri 环境中重定向 console 到 Rust 日志
-if (isTauriEnvCheck) {
+// ── 仅在 Tauri 环境中重定向 console 到 Rust 日志 (增加 window.__console_redirected__ 标记防 Vite HMR 重复包装)
+if (isTauriEnvCheck && !window.__console_redirected__) {
+  window.__console_redirected__ = true
   const rawLog = window.console.log
   const rawError = window.console.error
   const rawWarn = window.console.warn
@@ -1536,6 +1556,7 @@ function hasDetail(log) {
 function getStepLabel(step) {
   const map = {
     kws: '✨ 唤醒监测',
+    interrupt: '⚡ 语音打断',
     stt: '🎙️ 语音转写',
     intent: '🧠 意图决策',
     tool_call: '⚙️ 工具调用',
@@ -1811,12 +1832,17 @@ async function startVpRecording() {
   if (isRecordingVoiceprint.value) return
   
   try {
-    vpMicStream = await navigator.mediaDevices.getUserMedia({ audio: {
-      sampleRate: 16000,
-      channelCount: 1,
-      echoCancellation: true,
-      noiseSuppression: true
-    }})
+    try {
+      vpMicStream = await navigator.mediaDevices.getUserMedia({ audio: {
+        sampleRate: { ideal: 16000 },
+        channelCount: { ideal: 1 },
+        echoCancellation: true,
+        noiseSuppression: true
+      }})
+    } catch (e) {
+      console.warn('[Frontend] 声纹录制尝试高级参数失败，使用 audio: true 兜底:', e)
+      vpMicStream = await navigator.mediaDevices.getUserMedia({ audio: true })
+    }
     
     vpAudioChunks = []
     vpAudioContext = new AudioContext({ sampleRate: 16000 })
@@ -2190,6 +2216,8 @@ let playCtx = null        // 播放用 AudioContext（24kHz）
 let playQueue = []        // PCM16 帧队列
 const isPlaying = ref(false)     // 是否正在播放
 let pendingSilenceTimer = false  // 是否等待播放完后启动静默计时器
+let activeAudioSource = null     // 当前正在播放的 AudioBufferSourceNode
+let activeAudioResolve = null    // 当前正在等待的播放 Promise resolve 函数
 
 // 将 Float32 转为 PCM16 并加首字节前缀 0x00（协议标识 audio）
 function float32ToPcm16WithPrefix(input) {
@@ -2204,14 +2232,16 @@ function float32ToPcm16WithPrefix(input) {
   return prefixed
 }
 
+let isAudioLoopRunning = false
+
 // 播放 PCM16 bytes (自适应采样率)
 async function enqueueAudio(pcm16bytes) {
-  // 如果首字节是协议前缀标识符 0x00 (stream_type = audio)，截取后面的纯 PCM 字节
+  if (!pcm16bytes || pcm16bytes.length === 0) return
+
   let pcmData = pcm16bytes
   if (pcmData.length > 0 && pcmData[0] === 0x00) {
     pcmData = pcmData.subarray(1)
   }
-
   if (pcmData.length === 0) return
 
   const isLocal = settings.voiceModelName === 'sherpa-local'
@@ -2224,20 +2254,21 @@ async function enqueueAudio(pcm16bytes) {
     playCtx = new AudioContext({ sampleRate: expectedRate })
   }
 
-  // 显式唤醒 AudioContext，防止异步上下文创建导致挂起
   if (playCtx.state === 'suspended') {
     await playCtx.resume().catch(() => {})
   }
 
   playQueue.push(pcmData)
-  if (!isPlaying.value) {
+
+  if (!isAudioLoopRunning) {
+    isAudioLoopRunning = true
     isPlaying.value = true
+    console.log('[Audio Debug] ▶️ 开始物理播报 AI 回复语音...')
     while (playQueue.length > 0) {
       const chunk = playQueue.shift()
       const numSamples = Math.floor(chunk.byteLength / 2)
       if (numSamples === 0) continue
 
-      // 提取偶数对齐的 Int16Array 内存缓冲区，彻底解决 1 字节错位导致的白噪音
       const slicedBuffer = chunk.buffer.slice(chunk.byteOffset, chunk.byteOffset + numSamples * 2)
       const int16 = new Int16Array(slicedBuffer)
       const float32 = new Float32Array(int16.length)
@@ -2249,26 +2280,39 @@ async function enqueueAudio(pcm16bytes) {
       const source = playCtx.createBufferSource()
       source.buffer = buffer
       source.connect(playCtx.destination)
+      activeAudioSource = source
 
-      // 额外对 source 的播放进行安全兜底，防止 onended 事件因底层挂起迟迟不触发
+      const durationMs = (float32.length / expectedRate) * 1000
+
       await new Promise(resolve => {
         let isDone = false
+        let timerId = null
         const done = () => {
           if (!isDone) {
             isDone = true
+            if (timerId) clearTimeout(timerId)
+            activeAudioSource = null
+            activeAudioResolve = null
             resolve()
           }
         }
+        activeAudioResolve = done
         source.onended = done
+        if (playCtx.state === 'suspended') {
+          playCtx.resume().catch(() => {})
+        }
         source.start()
 
-        // 基于物理音频时长提供一个额外的安全超时，即使 onended 漏掉也能继续解开队列
-        const durationMs = (float32.length / expectedRate) * 1000 + 100
-        setTimeout(done, durationMs)
+        timerId = setTimeout(done, durationMs + 100)
       })
     }
+    isAudioLoopRunning = false
     isPlaying.value = false
-    // 播放队列排空了，如果有等待的静默计时器，现在启动
+    console.log('[Audio Debug] 🎉 AI 回复语音播报完毕！恢复倾听状态。')
+    if (inCall.value) {
+      isUserSpeaking.value = true
+      isThinking.value = false
+    }
     if (pendingSilenceTimer) {
       pendingSilenceTimer = false
       startSilenceTimer()
@@ -2277,10 +2321,20 @@ async function enqueueAudio(pcm16bytes) {
 }
 
 function stopAudioPlayback() {
+  console.log('[Audio Debug] 🛑 触发 stopAudioPlayback，强行清空播放队列与活动音频源')
   playQueue.length = 0
+  if (activeAudioSource) {
+    try { activeAudioSource.stop() } catch (e) {}
+    activeAudioSource = null
+  }
+  if (activeAudioResolve) {
+    try { activeAudioResolve() } catch (e) {}
+    activeAudioResolve = null
+  }
+  isAudioLoopRunning = false
   isPlaying.value = false
   if (playCtx) {
-    playCtx.close().catch(() => {})
+    try { playCtx.close() } catch (e) {}
     playCtx = null
   }
 }
@@ -2319,20 +2373,25 @@ async function startVoiceCall() {
     return
   }
   inCall.value = true
+  isPlaying.value = false // 复位播放标志，保证开启通话时麦克风音轨流立刻正常推送到 WebSocket
   showDebugPanel.value = true // 通话开启时自动打开调试面板
   debugLogs.value = [] // 开启新通话时，清空上一次的调试日志
   try {
     // 保持本地 KWS 监听继续开启，以支持通话中随时叫唤醒词打断
     // 强制枚举设备以刷新 Chrome 内部设备缓存（解决插拔后无法找到默认麦克风的问题）
     await navigator.mediaDevices.enumerateDevices().catch(() => {})
-    // 获取麦克风
-    micStream = await navigator.mediaDevices.getUserMedia({ audio: {
-      sampleRate: 16000,
-      channelCount: 1,
-      echoCancellation: true,
-      noiseSuppression: true,
-      autoGainControl: false
-    }})
+    // 获取麦克风（带参数降级兜底，兼容 Linux / GStreamer 各种后端驱动）
+    try {
+      micStream = await navigator.mediaDevices.getUserMedia({ audio: {
+        sampleRate: { ideal: 16000 },
+        channelCount: { ideal: 1 },
+        echoCancellation: true,
+        noiseSuppression: true
+      }})
+    } catch (micErr) {
+      console.warn('[Frontend] 组合音频参数打开麦克风失败，降级使用 audio: true 兜底:', micErr)
+      micStream = await navigator.mediaDevices.getUserMedia({ audio: true })
+    }
 
     // 建立 WebSocket 连接
     const wsUrl = settings.backendUrl
@@ -2358,6 +2417,18 @@ async function startVoiceCall() {
 
       // 开始录音推流
       audioCtx = new AudioContext({ sampleRate: 16000 })
+
+      // 预先创建并唤醒 AI 语音播放用 AudioContext (24kHz/8kHz)，避免异步回调中受到浏览器自动播放策略挂起
+      const isLocal = settings.voiceModelName === 'sherpa-local'
+      const expectedRate = isLocal ? 8000 : 24000
+      if (!playCtx || playCtx.sampleRate !== expectedRate) {
+        if (playCtx) { try { playCtx.close() } catch {} }
+        playCtx = new AudioContext({ sampleRate: expectedRate })
+      }
+      if (playCtx.state === 'suspended') {
+        playCtx.resume().catch(() => {})
+      }
+
       micSource = audioCtx.createMediaStreamSource(micStream)
       micProcessor = audioCtx.createScriptProcessor(2048, 1, 1)
       micProcessor.onaudioprocess = (e) => {
@@ -2399,6 +2470,10 @@ async function startVoiceCall() {
       if (event.data instanceof ArrayBuffer) {
         // 二进制 = AI 语音 PCM16 音频
         await enqueueAudio(new Uint8Array(event.data))
+        visualizerVolume.value = 1.5
+      } else if (typeof Blob !== 'undefined' && event.data instanceof Blob) {
+        const arrayBuf = await event.data.arrayBuffer()
+        await enqueueAudio(new Uint8Array(arrayBuf))
         visualizerVolume.value = 1.5
       } else {
         // 文本 JSON 消息
@@ -2540,6 +2615,12 @@ async function startVoiceCall() {
             } else {
               startSilenceTimer()
             }
+          } else if (msg.type === 'output_transcript_done') {
+            let lastMsg = messages.value[messages.value.length - 1];
+            if (lastMsg && lastMsg.role === 'assistant' && lastMsg.isVoiceWs) {
+              lastMsg.isFinal = true;
+              if (msg.data) lastMsg.content = msg.data;
+            }
           } else if (msg.type === 'weather_data') {
             weatherData.value = msg.data
             scrollToBottom()
@@ -2553,24 +2634,28 @@ async function startVoiceCall() {
               const state = msg.state
               console.log('[voice_ws] State Change ->', state)
               if (state === 'listening') {
-                isUserSpeaking.value = true
-                isThinking.value = false
-                isPlaying.value = false
+                if (!isPlaying.value) {
+                  isUserSpeaking.value = true
+                  isThinking.value = false
+                }
               } else if (state === 'thinking') {
                 isUserSpeaking.value = false
                 isThinking.value = true
-                isPlaying.value = false
               } else if (state === 'speaking') {
                 isUserSpeaking.value = false
                 isThinking.value = false
                 isPlaying.value = true
               } else if (state === 'idle' || state === 'sleeping') {
+                stopAudioPlayback()
                 isUserSpeaking.value = false
                 isThinking.value = false
                 isPlaying.value = false
               }
             } else if (msg.type === 'hangup') {
               console.log('[voice_ws] Received hangup signal')
+              isUserSpeaking.value = false
+              isThinking.value = false
+              isPlaying.value = false
               playExitAck(() => {
                 endVoiceCall()
               })
@@ -2657,6 +2742,10 @@ function playWakeAck(callback) {
 }
 // 退出前打印文字“再见”并播放 exit_female.wav
 function playExitAck(callback) {
+  stopAudioPlayback()
+  isUserSpeaking.value = false
+  isThinking.value = false
+  isPlaying.value = false
   messages.value.push({
     id: 'exit-' + Date.now(),
     role: 'assistant',
@@ -2692,7 +2781,15 @@ function playExitAck(callback) {
 }
 
 
+let lastWakeTime = 0
+
 function onWakeDetected(payload) {
+  const now = Date.now()
+  if (now - lastWakeTime < 1000) {
+    console.log('[App] 忽略 1000ms 冷却期内的重复唤醒触发:', payload)
+    return
+  }
+  lastWakeTime = now
   console.log('[App] 唤醒词触发，payload：', payload)
   
   // 提取配置中所有的纯文本中文词汇，用于与识别出的 payload 进行匹配
@@ -2748,20 +2845,26 @@ function onWakeDetected(payload) {
     } else {
       // 场景 B：通话中/正在播报状态 -> 0 延迟本地硬打断重置
       debugLogs.value.push({
-        step: 'kws',
-        content: `⚡ 检测到唤醒词硬打断: [${typeof payload === 'string' ? payload : '小安小安'}]，重置为倾听`,
+        step: 'interrupt',
+        content: `⚡ 触发打断指令: [${typeof payload === 'string' ? payload : '小安小安'}]，重置为倾听`,
         timestamp: Date.now()
       })
       
       // 1. 物理切音：停止本地一切正在播放的 AI 语音
       stopAudioPlayback()
 
-      // 2. 发送 interrupt 信号给后端取消云端生成并重置锁
+      // 2. 0 延迟即时重置前端 UI 状态为“聆听中”
+      isUserSpeaking.value = true
+      isThinking.value = false
+      isPlaying.value = false
+      visualizerVolume.value = 1.0
+
+      // 3. 发送 interrupt 信号给后端取消云端生成并重置锁
       if (voiceWs && voiceWs.readyState === WebSocket.OPEN) {
         voiceWs.send(JSON.stringify({ type: 'interrupt' }))
       }
 
-      // 3. 重置静默计时器
+      // 4. 重置静默计时器
       stopSilenceTimer()
       startSilenceTimer()
     }
@@ -2825,6 +2928,8 @@ async function loadDiskConfig() {
       if (globalCfg.default_city !== undefined) settings.defaultCity = globalCfg.default_city
       if (globalCfg.voiceprint_server_url !== undefined) settings.voiceprintServerUrl = globalCfg.voiceprint_server_url
       if (globalCfg.backend_url !== undefined) settings.backendUrl = globalCfg.backend_url
+      if (globalCfg.visual_terminal !== undefined) settings.visualTerminal = globalCfg.visual_terminal
+      if (globalCfg.ui_type !== undefined) settings.visualTerminal = globalCfg.ui_type
     }
   } catch (e) {
     console.warn('[config] 读 global.json 失败:', e)
@@ -2939,6 +3044,8 @@ async function fetchBackendConfig() {
     // ── 磁盘配置文件可直读字段：仅在非 Tauri 浏览器调试模式下从后端回退读取 ──
     if (!tauriInvoke) {
       if (cfg.enable_visual_broadcast !== undefined) settings.enableVisualBroadcast = cfg.enable_visual_broadcast
+      if (cfg.visual_terminal !== undefined) settings.visualTerminal = cfg.visual_terminal
+      if (cfg.ui_type !== undefined) settings.visualTerminal = cfg.ui_type
       if (cfg.default_city !== undefined) settings.defaultCity = cfg.default_city
       if (cfg.start_fullscreen !== undefined) isStartFullscreen.value = Boolean(cfg.start_fullscreen)
       if (cfg.log_level !== undefined) settings.logLevel = cfg.log_level
@@ -3209,6 +3316,7 @@ async function saveSettings() {
     text_model_tool_style: settings.textModelToolStyle,
     voice_cascade_model_tool_style: settings.voiceCascadeModelToolStyle,
     enable_visual_broadcast: settings.enableVisualBroadcast,
+    visual_terminal: settings.visualTerminal,
     start_fullscreen: isStartFullscreen.value,
     show_weather_card: settings.showWeatherCard,
     kws_max_active_paths: settings.kwsMaxActivePaths,

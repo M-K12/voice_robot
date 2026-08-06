@@ -22,10 +22,10 @@ import re
 # Setup logger before imports
 logger = logging.getLogger("xiaoan.weather")
 
-from backend.weather_mock import generate_mock_weather
-from backend.moji_service import moji_service
-from backend.fengyu_service import fengyu_service
-from backend.amap_service import amap_service
+from weather_mock import generate_mock_weather
+from moji_service import moji_service
+from fengyu_service import fengyu_service
+from amap_service import amap_service
 
 # Dummy Geocoder since we use online AMap service primarily
 class DummyGeocoder:

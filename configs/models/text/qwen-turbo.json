@@ -1,6 +1,6 @@
 {
     "value": "qwen-turbo",
     "label": "qwen-turbo",
-    "tool_mode": "",
-    "tool_style": ""
+    "tool_mode": "serial",
+    "tool_style": "native"
 }

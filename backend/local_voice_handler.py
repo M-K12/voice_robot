@@ -28,6 +28,9 @@ except ImportError:
 
 logger = logging.getLogger("xiaoan.local_voice")
 
+from utils import is_exit_intent
+
+
 # 全局模型实例缓存 (单例)
 _streaming_asr = None
 _offline_asr = None
@@ -81,7 +84,7 @@ def clean_text_for_vits(text: str) -> str:
 def _get_local_provider() -> str:
     """从 config.json 动态获取本地硬件加速 provider"""
     try:
-        from backend.utils import load_config
+        from utils import load_config
         return load_config().get("local_provider", "cpu")
     except Exception:
         return "cpu"
@@ -328,10 +331,14 @@ async def handle_local_voice_session(
             elif "text" in msg:
                 try:
                     payload = json.loads(msg["text"])
-                    if payload.get("type") == "query":
+                    if payload.get("type") == "interrupt":
+                        print(f"\033[93m[Local-Voice] 收到打断指令，重置为倾听状态\033[0m")
+                        await visual_broadcast_manager.broadcast({"type": "state_change", "state": "listening"})
+                        await websocket.send_json({"type": "state_change", "state": "listening"})
+                        await websocket.send_json({"type": "interrupt"})
+                    elif payload.get("type") == "query":
                         text = payload.get("text", "").strip()
-                        exit_keywords = ["退下", "去休息吧", "退出", "挂断", "再见", "拜拜", "别说了", "闭嘴", "滚蛋"]
-                        if any(kw in text for kw in exit_keywords):
+                        if is_exit_intent(text):
                             print(f"\033[91m[Local-Voice] 收到前端挂断指令: {text}\033[0m")
                             await websocket.send_json({"type": "hangup"})
                             session_active = False
@@ -364,8 +371,7 @@ async def run_voice_chat_pipeline(
     speed_rate: float = 1.0
 ):
     """将 ASR 结果喂给核心大模型应答流，并流式断句通过 TTS 播放"""
-    exit_keywords = ["退下", "去休息吧", "退出", "挂断", "再见", "拜拜", "别说了", "闭嘴", "滚蛋"]
-    if any(kw in final_text for kw in exit_keywords):
+    if is_exit_intent(final_text):
         print(f"\033[91m[Local-Voice] 识别到退出指令，执行挂断并退回复位...\033[0m")
         await websocket.send_json({"type": "hangup"})
         await visual_broadcast_manager.broadcast({"type": "interrupted"})

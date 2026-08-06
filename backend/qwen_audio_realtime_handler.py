@@ -20,7 +20,7 @@ qwen-audio-3.0-realtime-plus / qwen-audio-3.0-realtime-flash 独立 WebSocket Ha
   DASHSCOPE_WORKSPACE_ID   — 百炼业务空间 ID（新增，在 .env 中配置）
 """
 
-import os, asyncio, json, base64, time, logging, traceback
+import os, re, asyncio, json, base64, time, logging, traceback
 from typing import Optional, Callable, Dict, Any, List
 from enum import Enum
 
@@ -43,6 +43,48 @@ class QwenAudioTurnMode(Enum):
 
 # 全局静态声纹预加载缓存 (role_name -> list of urls)
 STATIC_VOICEPRINT_CACHE: dict[str, list[str]] = {}
+
+
+def _write_voiceprint_wav(save_path: str, audio_data: bytes):
+    import wave
+    with wave.open(save_path, 'wb') as wf:
+        wf.setnchannels(1)
+        wf.setsampwidth(2)      # 16-bit
+        wf.setframerate(16000)  # 16kHz
+        wf.writeframes(audio_data)
+
+
+def _upload_voiceprint_file(public_base_url: str, save_path: str):
+    with open(save_path, "rb") as f:
+        wav_bytes = f.read()
+    import urllib.request, uuid
+    boundary = "----WebKitFormBoundary" + uuid.uuid4().hex
+    sync_url = f"{public_base_url.rstrip('/')}/api/voiceprints"
+    body = []
+    body.append(f"--{boundary}".encode())
+    body.append(b'Content-Disposition: form-data; name="name"')
+    body.append(b'')
+    body.append("动态自动首句声纹".encode('utf-8'))
+    body.append(f"--{boundary}".encode())
+    body.append(b'Content-Disposition: form-data; name="custom_filename"')
+    body.append(b'')
+    body.append("dynamic_temp.wav".encode('utf-8'))
+    body.append(f"--{boundary}".encode())
+    body.append(b'Content-Disposition: form-data; name="file"; filename="dynamic_temp.wav"')
+    body.append(b'Content-Type: audio/wav')
+    body.append(b'')
+    body.append(wav_bytes)
+    body.append(f"--{boundary}--".encode())
+    body.append(b'')
+    payload = b'\r\n'.join(body)
+    req = urllib.request.Request(
+        sync_url, data=payload,
+        headers={"Content-Type": f"multipart/form-data; boundary={boundary}"},
+        method="POST"
+    )
+    with urllib.request.urlopen(req, timeout=12) as resp:
+        pass
+
 
 # ─────────────────────────────────────────────
 # QwenAudioRealtimeClient — 核心 WebSocket 客户端
@@ -252,14 +294,21 @@ class QwenAudioRealtimeClient:
             async for message in self.ws:
                 event = json.loads(message)
                 event_type = event.get("type")
+
                 if event_type != "response.audio.delta":
-                    logger.info(f"[QwenAudio] ← {event_type}")
+                    if event_type == "error":
+                        err_obj = event.get("error", {})
+                        err_msg = str(err_obj.get("message", "") if isinstance(err_obj, dict) else err_obj)
+                        if not ("active response" in err_msg.lower() or "already in progress" in err_msg.lower()):
+                            logger.info(f"[QwenAudio] ← {event_type}")
+                    else:
+                        logger.info(f"[QwenAudio] ← {event_type}")
 
                 if event_type == "error":
                     err_obj = event.get("error", {})
                     err_msg = str(err_obj.get("message", "") if isinstance(err_obj, dict) else err_obj)
-                    if "Conversation has no active response" in err_msg or "manual response is already in progress" in err_msg:
-                        logger.info(f"[QwenAudio] 忽略阿里云正常打断取消提醒: {err_msg}")
+                    if "active response" in err_msg.lower() or "already in progress" in err_msg.lower():
+                        logger.info(f"[QwenAudio] 忽略阿里云正常打断/并发取消提醒: {err_msg}")
                     else:
                         logger.error(f"[QwenAudio] 服务端错误: {err_obj}")
                         if self.on_error:
@@ -428,8 +477,8 @@ async def handle_qwen_audio_realtime_session(
     接管 qwen-audio-3.0-realtime-plus / flash 端到端全双工语音会话主循环。
     与 OmniRealtimeClient / Xunfei / Sherpa 完全独立，不共享任何代码路径。
     """
-    from backend.utils import get_tool_calling_mode, normalize_tool_name, is_exit_intent, is_wake_word, send_session_hangup
-    from backend.tools import GLOBAL_TOOLS_SCHEMA, get_instructions, ToolContext, execute_tool
+    from utils import get_tool_calling_mode, normalize_tool_name, is_exit_intent, is_wake_word, send_session_hangup
+    from tools import GLOBAL_TOOLS_SCHEMA, get_instructions, ToolContext, execute_tool
 
     api_key = os.getenv("DASHSCOPE_API_KEY", "")
     workspace_id = os.getenv("DASHSCOPE_WORKSPACE_ID", "")
@@ -562,6 +611,14 @@ async def handle_qwen_audio_realtime_session(
             return
         hangup_sent = True
         session_active = False
+        logger.info("🤖 [QwenAudio AI 完结] 捕获到退出指令，会话平滑挂断")
+        if client:
+            client._audio_suppressed = True
+            client._manual_interrupt_active = True
+            try:
+                await client.cancel_response()
+            except Exception as e:
+                logger.debug(f"[QwenAudio] cancel_response on hangup: {e}")
         await send_session_hangup(
             websocket=websocket,
             visual_broadcast_manager=visual_broadcast_manager,
@@ -577,7 +634,8 @@ async def handle_qwen_audio_realtime_session(
         asyncio.run_coroutine_threadsafe(
             visual_broadcast_manager.broadcast({"type": "interrupted"}), loop)
         asyncio.run_coroutine_threadsafe(
-            visual_broadcast_manager.broadcast({"type": "state_change", "state": "idle"}), loop)
+            visual_broadcast_manager.broadcast({"type": "state_change", "state": "listening"}), loop)
+        asyncio.run_coroutine_threadsafe(_send_safe({"type": "state_change", "state": "listening"}), loop)
         asyncio.run_coroutine_threadsafe(_send_safe({"type": "interrupt"}), loop)
 
     def on_state_change(state: str):
@@ -594,13 +652,13 @@ async def handle_qwen_audio_realtime_session(
             return
 
         if is_final and is_exit_intent(text):
-            logger.info(f"[QwenAudio] 退出指令 '{text}'")
+            logger.info(f"[QwenAudio] 捕获完结句退出指令 (is_final=True): '{text}'")
             await _send_hangup()
             return
 
-        # 唤醒词文本打断拦截：当 ASR 结果单独为唤醒词时，立刻重置会话并保持倾听，避免模型回答“我在呢”
-        if is_final and is_wake_word(text):
-            logger.info(f"⚡ [QwenAudio ASR 唤醒打断] 捕获到单句唤醒词 '{text}'，立刻打断并重置为倾听状态！")
+        # 唤醒词文本打断拦截：当 ASR 结果单独为唤醒词时，立刻重置会话并保持倾听，避免模型回答“我在呢”，且不向前端展示唤醒词文字
+        if is_wake_word(text):
+            logger.info(f"⚡ [QwenAudio ASR 唤醒打断] 捕获到唤醒词 '{text}'，立刻打断并重置为倾听状态（不推送至前端展示）！")
             on_interrupt()
             client._audio_suppressed = True  # 物理全屏蔽：拦截该次及随后的任何音频与文本！
             client._manual_interrupt_active = True  # 强行锁定！防止后续异步返回的 response.created 擅自解封
@@ -628,30 +686,35 @@ async def handle_qwen_audio_realtime_session(
     def on_output_transcript(text: str, response_id: str):
         if client._audio_suppressed:
             return
-        if text.strip():
-            logger.info(f"🔊 [QwenAudio AI 流式] {text}")
+        clean = re.sub(r"<[^>]+>", "", text).strip()
+        if not clean:
+            return
+        logger.info(f"🔊 [QwenAudio AI 流式] {clean}")
         asyncio.run_coroutine_threadsafe(
-            visual_broadcast_manager.broadcast({"type": "subtitle", "text": text}), loop)
+            visual_broadcast_manager.broadcast({"type": "subtitle", "text": clean}), loop)
         if expecting_weather_summary:
             asyncio.run_coroutine_threadsafe(
-                websocket.send_json({"type": "weather_summary", "data": text}), loop)
+                websocket.send_json({"type": "weather_summary", "data": clean}), loop)
         else:
             asyncio.run_coroutine_threadsafe(
-                websocket.send_json({"type": "output_transcript", "data": text}), loop)
+                websocket.send_json({"type": "output_transcript", "data": clean}), loop)
         asyncio.run_coroutine_threadsafe(
-            websocket.send_json({"type": "debug_event", "step": "tts", "content": text}), loop)
+            websocket.send_json({"type": "debug_event", "step": "tts", "content": clean}), loop)
 
     def on_output_transcript_completed(text: str):
         nonlocal expecting_weather_summary
-        if client._audio_suppressed or not text.strip():
+        if client._audio_suppressed:
             return
-        logger.info(f"🤖 [QwenAudio AI 完结] {text.strip()}")
+        clean = re.sub(r"<[^>]+>", "", text).strip()
+        if not clean:
+            return
+        logger.info(f"🤖 [QwenAudio AI 完结] {clean}")
         if expecting_weather_summary:
             expecting_weather_summary = False
             asyncio.run_coroutine_threadsafe(
-                websocket.send_json({"type": "weather_summary", "data": text.strip()}), loop)
+                websocket.send_json({"type": "weather_summary", "data": clean}), loop)
             asyncio.run_coroutine_threadsafe(
-                visual_broadcast_manager.broadcast({"type": "subtitle", "text": text.strip()}), loop)
+                visual_broadcast_manager.broadcast({"type": "subtitle", "text": clean}), loop)
         
         asyncio.run_coroutine_threadsafe(
             websocket.send_json({"type": "output_transcript_done"}), loop)
@@ -684,6 +747,7 @@ async def handle_qwen_audio_realtime_session(
         audio_active = False
         asyncio.run_coroutine_threadsafe(
             visual_broadcast_manager.broadcast({"type": "state_change", "state": "idle"}), loop)
+        asyncio.run_coroutine_threadsafe(_send_safe({"type": "state_change", "state": "listening"}), loop)
         # 一轮 AI 回复播放结束进入空闲期，静默检查声纹就绪状态并平滑热升级
         if _dynamic_vp_ready and not _switched_to_smart_turn:
             asyncio.run_coroutine_threadsafe(_try_seamless_switch_to_smart_turn(), loop)
@@ -710,7 +774,12 @@ async def handle_qwen_audio_realtime_session(
             try:
                 await websocket.send_json({
                     "type": "debug_event", "step": "intent",
-                    "content": f"调用工具: {name}",
+                    "content": f"根据您的需求，意图分析决定调用本地工具: {name}",
+                })
+                await websocket.send_json({
+                    "type": "debug_event", "step": "tool_call",
+                    "name": name,
+                    "arguments": arguments_str
                 })
             except Exception:
                 pass
@@ -724,6 +793,15 @@ async def handle_qwen_audio_realtime_session(
                 result_payload = await execute_tool(name, arguments_str, ctx)
                 expecting_weather_summary = ctx.expecting_weather_summary
                 session_active = ctx.session_active
+
+                try:
+                    await websocket.send_json({
+                        "type": "debug_event", "step": "tool_result",
+                        "name": name,
+                        "result": str(result_payload)[:300]
+                    })
+                except Exception:
+                    pass
             except Exception as e:
                 logger.error(f"[QwenAudio Tool] execute error: {e}")
                 traceback.print_exc()
@@ -803,54 +881,19 @@ async def handle_qwen_audio_realtime_session(
 
     async def _async_upload_dynamic_vp(audio_data: bytes):
         nonlocal _dynamic_vp_ready, _ready_vp_urls
-        import wave
+        # 公网声纹服务地址：用于动态声纹上传与回读（Qwen 云端需公网可达 URL）
+        public_base_url = os.getenv("VITE_PUBLIC_BASE_URL", "").rstrip("/")
+        base_url = public_base_url or vp_server_url
         save_dir = "backend/voiceprints"
         os.makedirs(save_dir, exist_ok=True)
         save_path = os.path.join(save_dir, "dynamic_temp.wav")
         try:
-            def _write():
-                with wave.open(save_path, 'wb') as wf:
-                    wf.setnchannels(1)
-                    wf.setsampwidth(2)      # 16-bit
-                    wf.setframerate(16000)  # 16kHz
-                    wf.writeframes(audio_data)
-            await asyncio.to_thread(_write)
+            await asyncio.to_thread(_write_voiceprint_wav, save_path, audio_data)
             print(f"\033[96m[QwenAudio] 动态临时声纹本地保存成功: {save_path}\033[0m")
             
             # 如果配置了公网 VITE_PUBLIC_BASE_URL，后台异步推送到公网服务器
-
             if public_base_url and "127.0.0.1" not in public_base_url and "localhost" not in public_base_url:
-                def _upload():
-                    with open(save_path, "rb") as f:
-                        wav_bytes = f.read()
-                    import urllib.request, uuid
-                    boundary = "----WebKitFormBoundary" + uuid.uuid4().hex
-                    sync_url = f"{public_base_url.rstrip('/')}/api/voiceprints"
-                    body = []
-                    body.append(f"--{boundary}".encode())
-                    body.append(b'Content-Disposition: form-data; name="name"')
-                    body.append(b'')
-                    body.append("动态自动首句声纹".encode('utf-8'))
-                    body.append(f"--{boundary}".encode())
-                    body.append(b'Content-Disposition: form-data; name="custom_filename"')
-                    body.append(b'')
-                    body.append("dynamic_temp.wav".encode('utf-8'))
-                    body.append(f"--{boundary}".encode())
-                    body.append(b'Content-Disposition: form-data; name="file"; filename="dynamic_temp.wav"')
-                    body.append(b'Content-Type: audio/wav')
-                    body.append(b'')
-                    body.append(wav_bytes)
-                    body.append(f"--{boundary}--".encode())
-                    body.append(b'')
-                    payload = b'\r\n'.join(body)
-                    req = urllib.request.Request(
-                        sync_url, data=payload,
-                        headers={"Content-Type": f"multipart/form-data; boundary={boundary}"},
-                        method="POST"
-                    )
-                    with urllib.request.urlopen(req, timeout=12) as resp:
-                        pass
-                await asyncio.to_thread(_upload)
+                await asyncio.to_thread(_upload_voiceprint_file, public_base_url, save_path)
                 logger.info("[QwenAudio Sync] 动态声纹后台成功同步推送到公网服务器！已就绪。")
 
             _ready_vp_urls = [f"{base_url}/voiceprints/dynamic_temp.wav"]
@@ -973,6 +1016,8 @@ async def handle_qwen_audio_realtime_session(
                         asyncio.create_task(
                             visual_broadcast_manager.broadcast({"type": "state_change", "state": "listening"})
                         )
+                        await _send_safe({"type": "state_change", "state": "listening"})
+                        await _send_safe({"type": "interrupt"})
                     elif payload.get("type") == "query":
                         text = payload.get("text", "").strip()
                         exit_kws = ["退下", "去休息吧", "退出", "挂断", "再见", "拜拜", "别说了", "闭嘴", "滚蛋"]
@@ -985,6 +1030,8 @@ async def handle_qwen_audio_realtime_session(
 
     except (WebSocketDisconnect, websockets.exceptions.ConnectionClosed):
         logger.info("[QwenAudio] 前端 WebSocket 正常断开")
+    except asyncio.CancelledError:
+        logger.info("[QwenAudio] 会话任务已被正常取消")
     except RuntimeError as e:
         if "receive" in str(e) or "disconnect" in str(e):
             logger.info(f"[QwenAudio] WebSocket 正常断开 ({e})")
@@ -1038,7 +1085,7 @@ async def preload_static_voiceprints(config: Optional[dict] = None) -> List[str]
     global STATIC_VOICEPRINT_CACHE
     if config is None:
         try:
-            from backend.utils import load_config
+            from utils import load_config
             config = load_config()
         except Exception as e:
             logger.warning(f"[QwenAudio 声纹预加载] 读取配置失败: {e}")

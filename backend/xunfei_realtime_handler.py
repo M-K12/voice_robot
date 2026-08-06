@@ -13,6 +13,8 @@ import websockets
 from fastapi import WebSocket, WebSocketDisconnect
 
 logger = logging.getLogger("xiaoan.xunfei_realtime")
+from utils import is_exit_intent
+
 
 class XunfeiResultParser:
     """
@@ -449,9 +451,8 @@ async def handle_xunfei_realtime_session(
             
         logger.info(f"[Xunfei-ASR] 本轮识别最终文本: '{final_text}'")
 
-        # 优化退出指令识别，支持语音说：退下、去休息吧、退出等词汇
-        exit_keywords = ["退下", "去休息吧", "退出", "挂断", "再见", "拜拜", "别说了", "闭嘴", "滚蛋"]
-        if any(kw in final_text for kw in exit_keywords):
+        # 优化退出指令识别，使用统一严谨的意图判断
+        if is_exit_intent(final_text):
             logger.info(f"[Xunfei-ASR] 检测到退出指令 '{final_text}'，执行快速挂断")
             await websocket.send_json({"type": "hangup"})
             await visual_broadcast_manager.broadcast({"type": "interrupted"})
@@ -578,7 +579,13 @@ async def handle_xunfei_realtime_session(
                 text_msg = message["text"]
                 try:
                     payload = json.loads(text_msg)
-                    if payload.get("type") == "hangup":
+                    if payload.get("type") == "interrupt":
+                        logger.info("⚡ [Xunfei-Voice] 收到前端打断指令，立即切断 TTS 播放并复位为倾听")
+                        current_cancel_event.set()
+                        await visual_broadcast_manager.broadcast({"type": "state_change", "state": "listening"})
+                        await websocket.send_json({"type": "state_change", "state": "listening"})
+                        await websocket.send_json({"type": "interrupt"})
+                    elif payload.get("type") == "hangup":
                         logger.info("[Xunfei-Voice] 前端收到挂断请求")
                         break
                     elif payload.get("type") == "query" or payload.get("type") == "text_query":

@@ -2,6 +2,7 @@ import re
 import json
 import httpx
 import asyncio
+import sys
 import logging
 from pathlib import Path
 from typing import Optional, Any, List
@@ -9,6 +10,24 @@ from fastapi import WebSocket
 from starlette.websockets import WebSocketState
 
 logger = logging.getLogger("xiaoan.utils")
+
+FALLBACK_DEFAULT_CITY = "歙县"
+
+def _get_configs_dir() -> Path:
+    """Intelligently locate configs directory across standalone executable and dev environments."""
+    candidates = [
+        Path(sys.executable).parent / "configs",
+        Path(sys.executable).parent.parent / "configs",
+        Path(sys.executable).parent / "_internal" / "configs",
+        Path.cwd() / "configs",
+        Path.cwd() / "backend" / "configs",
+        Path(__file__).parent.parent.resolve() / "configs",
+        Path(__file__).parent.resolve() / "configs",
+    ]
+    for c in candidates:
+        if c.exists() and c.is_dir():
+            return c
+    return Path(__file__).parent.parent.resolve() / "configs"
 
 _CITY_TO_AREACODE = {}
 _AREACODE_TO_STATION = {}
@@ -78,18 +97,17 @@ def clean_echo_text(text: str, last_ai_summary: str) -> str:
     return text
 
 async def fetch_default_city() -> str:
-    """Fetch default city from local configuration or external IP geolocation service."""
-    config_path = (Path(__file__).parent.parent / "config.json").resolve()
-    if config_path.exists():
-        try:
-            with open(config_path, "r", encoding="utf-8") as f:
-                config_data = json.load(f)
-                city = config_data.get("default_city")
-                if city:
-                    return city
-        except Exception:
-            pass
+    """Fetch default city from local configuration (configs/global.json) or external IP geolocation service."""
+    # 1. 优先读取配置文件 (configs/global.json) 中的 default_city
+    try:
+        cfg = load_config()
+        city = cfg.get("default_city")
+        if city:
+            return city
+    except Exception:
+        pass
 
+    # 2. 回退通过 IP 自动定位当前城市
     try:
         async with httpx.AsyncClient() as client:
             resp = await client.get("http://ip-api.com/json/?lang=zh-CN", timeout=5.0)
@@ -102,6 +120,9 @@ async def fetch_default_city() -> str:
                     return city
     except Exception:
         pass
+
+    # 3. 终极兜底保底返回
+    return FALLBACK_DEFAULT_CITY
 
 def resolve_model_path(model_dir: str) -> Path:
     """Resolve model_dir to absolute Path using multiple base directories."""
@@ -198,8 +219,8 @@ def load_config() -> dict:
     3. Dynamically scan configs/models/* and sherpa/models/ to build options and voice_options_map
     4. Merge fine-grained settings from active model JSON files and keywords.txt
     """
-    project_root = Path(__file__).parent.parent.resolve()
-    configs_dir = project_root / "configs"
+    configs_dir = _get_configs_dir()
+    project_root = configs_dir.parent
     models_dir = configs_dir / "models"
     
     global_config = {}
@@ -398,14 +419,14 @@ def save_config_split(new_config: dict) -> dict:
     Save and split input configuration into configs/global.json, configs/model_config.json,
     configs/models/*/*.json, and model keywords.txt. Returns freshly loaded config.
     """
-    project_root = Path(__file__).parent.parent.resolve()
-    configs_dir = project_root / "configs"
+    configs_dir = _get_configs_dir()
+    project_root = configs_dir.parent
     models_dir = configs_dir / "models"
     
     # 1. 写回基础全局属性 (configs/global.json)
     global_json = configs_dir / "global.json"
     global_fields = {}
-    for k in ["default_city", "enable_visual_broadcast", "local_provider", "log_level", "log_file_level", "session_idle_timeout_sec", "voiceprint_server_url", "backend_url"]:
+    for k in ["default_city", "enable_visual_broadcast", "local_provider", "log_level", "log_file_level", "session_idle_timeout_sec", "voiceprint_server_url", "backend_url", "visual_terminal", "ui_type"]:
         if k in new_config:
             val = new_config[k]
             if k == "session_idle_timeout_sec":
@@ -705,11 +726,59 @@ EXIT_KEYWORDS = [
 ]
 
 def is_exit_intent(text: str) -> bool:
-    """判断转写文本是否包含退出/告别意图"""
+    """
+    严谨判断转写文本是否为退出/挂断会话意图。
+    防止气象/应急业务词（如“水退了”、“灾情消退”、“怎么退出界面”）被误识别为挂断。
+    """
     if not text or not isinstance(text, str):
         return False
-    clean_text = text.strip()
-    return any(kw in clean_text for kw in EXIT_KEYWORDS)
+
+    clean_text = re.sub(r"[^\w\u4e00-\u9fa5]", "", text.strip())
+    if not clean_text:
+        return False
+
+    # 1. 业务/询问排除关键词（出现这些词极大概率为询问业务、天气、灾情或界面操作，绝对不是挂断会话指令）
+    EXCLUDE_KEYWORDS = [
+        "怎么", "如何", "方法", "步骤", "按钮", "界面", "功能", "系统", "操作", "页面", "屏幕", "程序",
+        "水", "雨", "灾情", "消退", "退去", "撤退", "后退", "退回", "退款", "退货", "退耕", "退化",
+        "退潮", "减退", "衰退", "退缩", "退避", "退费", "退单", "退还", "退一步", "退后",
+        "隐患", "避难所", "物资", "救援", "大屏", "图层", "雷达", "卫星", "地图", "积水", "内涝",
+        "气象", "天气", "预警", "风力", "气温", "温度", "多少", "在哪", "是不是", "查询", "介绍",
+        "说明", "解决", "处理", "情况", "程度"
+    ]
+
+    # 2. 强告别/退出核心短语
+    STRICT_EXACT_EXIT_PHRASES = {
+        "再见", "拜拜", "挂断", "退下", "退下吧", "退一下", "退一下吧", "退出去", "小安退下", "去休息吧", "小安去休息吧",
+        "休息吧", "闭嘴", "滚蛋", "告辞", "先这样吧", "先这样", "不用说了", "不要说了",
+        "退出", "退出吧", "小安退出", "退出对话", "结束对话", "关闭对话", "关闭会话", "退了吧",
+        "挂断会话", "挂断电话", "结束通话"
+    }
+
+    # 完全精准匹配
+    if clean_text in STRICT_EXACT_EXIT_PHRASES:
+        return True
+
+    # 检查排除词：如果包含排除词，直接否决
+    for exc in EXCLUDE_KEYWORDS:
+        if exc in clean_text:
+            return False
+
+    # 3. 常见无害前缀剥离
+    prefix_pattern = r"^(小安|好的|行了|好了|那就|没事了|你可以|那|先|就)*"
+    stripped = re.sub(prefix_pattern, "", clean_text)
+
+    if stripped in STRICT_EXACT_EXIT_PHRASES:
+        return True
+
+    # 4. 句尾告别词（当文本较短 <= 12 字，且以严格告别词结尾）
+    if len(clean_text) <= 12:
+        for phrase in ["再见", "拜拜", "退下", "退下吧", "去休息吧", "闭嘴", "先这样吧"]:
+            if clean_text.endswith(phrase):
+                return True
+
+    return False
+
 
 
 async def send_session_hangup(
@@ -729,6 +798,7 @@ async def send_session_hangup(
     if websocket:
         try:
             if websocket.client_state == WebSocketState.CONNECTED:
+                await websocket.send_json({"type": "state_change", "state": "idle"})
                 await websocket.send_json({"type": "hangup", "text": text})
                 await websocket.send_json({
                     "type": "debug_event",

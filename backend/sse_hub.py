@@ -74,17 +74,6 @@ class SSEHub:
             except Exception:
                 payload_dict = {}
 
-        # 旁路同步广播给大屏 WebSocket 客户端
-        try:
-            from backend.main import visual_broadcast_manager
-            if event_type in ["control_command", "query_info"]:
-                asyncio.create_task(visual_broadcast_manager.broadcast({
-                    "type": event_type,
-                    "data": payload_dict
-                }))
-        except Exception as e:
-            print(f"[SSEHub] Broadcast to visual manager failed: {e}")
-
         # Format as SSE: event: <type>\ndata: <json>\n\n
         sse_message = f"event: {event_type}\ndata: {payload}\n\n"
 

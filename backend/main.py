@@ -22,7 +22,26 @@ import httpx
 from dotenv import load_dotenv
 from pydantic import BaseModel
 
-load_dotenv()
+import sys
+
+# 彻底清除所有网络代理环境变量，防止继承系统/用户环境及.env文件中的代理干扰
+for _proxy_key in ["http_proxy", "https_proxy", "all_proxy", "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY"]:
+    os.environ.pop(_proxy_key, None)
+
+# 智能多路径加载 .env 密钥配置文件 (支持可执行文件同级、_internal 目录及当前工作目录)
+_env_candidates = [
+    Path.cwd() / ".env",
+    Path(sys.executable).parent / ".env",
+    Path(sys.executable).parent / "_internal" / ".env",
+    Path(__file__).parent / ".env",
+    Path(__file__).parent.parent / ".env",
+]
+for _env_path in _env_candidates:
+    if _env_path.exists():
+        load_dotenv(dotenv_path=_env_path)
+
+for _proxy_key in ["http_proxy", "https_proxy", "all_proxy", "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY"]:
+    os.environ.pop(_proxy_key, None)
 
 # Sanitize NO_PROXY to prevent httpx parsing errors with IPv6 addresses like ::1/128
 no_proxy = os.environ.get("NO_PROXY", "")
@@ -64,11 +83,10 @@ from fastapi.responses import StreamingResponse
 
 
 
-from backend.local_voice_handler import handle_local_voice_session
-from backend.sse_hub import sse_hub
-from backend.utils import fetch_default_city, get_tool_calling_mode, get_tool_calling_style, normalize_tool_name
-from backend.tools import GLOBAL_TOOLS_SCHEMA, get_instructions, ToolContext, execute_tool
-from backend.weather_router import router as weather_router
+from sse_hub import sse_hub
+from utils import fetch_default_city, get_tool_calling_mode, get_tool_calling_style, normalize_tool_name
+from tools import GLOBAL_TOOLS_SCHEMA, get_instructions, ToolContext, execute_tool
+from weather_router import router as weather_router
 
 # FastAPI 初始化
 @asynccontextmanager
@@ -78,18 +96,38 @@ async def lifespan(app: FastAPI):
     global DEFAULT_CITY
     DEFAULT_CITY = await fetch_default_city()
 
-    from backend.utils import load_config
+    from utils import load_config
     cfg = load_config()
     console_lvl = cfg.get("log_level", "INFO")
     file_lvl = cfg.get("log_file_level", "WARNING")
 
-    from backend.logger_setup import setup_logging
+    from logger_setup import setup_logging
     logging.info(f"🚀 [Backend Service Started] Voice Robot Backend v2.0 | 默认城市: {DEFAULT_CITY}")
+
+    # ── 语音静态文件挂载 (在 worker 进程 startup 时挂载，确保只执行一次) ──
+    from fastapi.staticfiles import StaticFiles
+    _assets_candidates = [
+        Path(sys.executable).parent / "assets",
+        Path.cwd() / "assets",
+        Path.cwd() / "backend" / "assets",
+        Path(__file__).parent / "assets",
+        Path(sys.executable).parent / "_internal" / "assets",
+    ]
+    _valid_assets_dir = None
+    for _p in _assets_candidates:
+        if _p.exists() and _p.is_dir() and any(_p.iterdir()):
+            _valid_assets_dir = _p
+            break
+    if _valid_assets_dir:
+        app.mount("/assets", StaticFiles(directory=str(_valid_assets_dir)), name="assets")
+        logging.info(f"✅ 成功挂载语音静态资源目录 /assets -> {_valid_assets_dir}")
+    else:
+        logging.warning("⚠️ 未找到 assets 语音静态资源目录，/assets/ 将无法访问！")
 
     # ── 声纹预加载：仅当配置模型为 Qwen-Audio 且为 static 模式时异步预加载指定角色的采样 ──
     voice_model = cfg.get("voice_model_name", "")
     if voice_model and "qwen-audio" in voice_model.lower():
-        from backend.qwen_audio_realtime_handler import preload_static_voiceprints
+        from qwen_audio_realtime_handler import preload_static_voiceprints
         asyncio.create_task(preload_static_voiceprints(cfg))
 
 
@@ -115,44 +153,13 @@ app.add_middleware(
 
 app.include_router(weather_router)
 
-from fastapi.staticfiles import StaticFiles
-
-assets_dir = Path(__file__).parent / "assets"
-if assets_dir.exists():
-    app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="assets")
 
 
 
 
 
-class VisualBroadcastManager:
-    def __init__(self):
-        self.clients: set[WebSocket] = set()
 
-    async def register(self, websocket: WebSocket):
-        self.clients.add(websocket)
-        logging.info(f"[VisualBroadcastManager] 大屏视觉端连接成功. 当前连接数: {len(self.clients)}")
-
-    def unregister(self, websocket: WebSocket):
-        self.clients.discard(websocket)
-        logging.info(f"[VisualBroadcastManager] 大屏视觉端断开连接. 当前连接数: {len(self.clients)}")
-
-    async def broadcast(self, payload: dict):
-        from backend.utils import load_config
-        config = load_config()
-        if not config.get("enable_visual_broadcast"):
-            return
-        if not self.clients:
-            return
-        dead = set()
-        for ws in self.clients:
-            try:
-                await ws.send_json(payload)
-            except Exception:
-                dead.add(ws)
-        self.clients -= dead
-
-visual_broadcast_manager = VisualBroadcastManager()
+from visual_manager import visual_broadcast_manager
 
 # ──────────────────────────────────────────────
 # 前端日志异步收集 API
@@ -166,7 +173,7 @@ async def receive_frontend_logs(request: Request):
         context = data.get("context", "")
         log_line = f"[{context}] {msg}" if context else msg
 
-        from backend.logger_setup import frontend_logger
+        from logger_setup import frontend_logger
         if level == "error":
             frontend_logger.error(log_line)
         elif level == "warn" or level == "warning":
@@ -184,25 +191,37 @@ async def receive_frontend_logs(request: Request):
 async def ws_visual_endpoint(websocket: WebSocket):
     await websocket.accept()
     await visual_broadcast_manager.register(websocket)
+    
+    # 🌐 当大屏连接初次建立时，主动向该大屏推送当前的默认地理坐标信息
+    try:
+        from utils import load_config, FALLBACK_DEFAULT_CITY
+        from amap_service import amap_service
+        config = load_config()
+        ui_type = config.get("visual_terminal") or config.get("ui_type") or "demo_ui"
+        await websocket.send_json({"type": "system_config", "config": {"visual_terminal": ui_type}})
+        city = config.get("default_city") or FALLBACK_DEFAULT_CITY
+        real_lon, real_lat = None, None
+        if amap_service:
+            real_lon, real_lat, area_name, _, _, _, _ = await amap_service.get_poi_coordinates(city)
+            if area_name:
+                city = area_name
+        ctrl_data = {
+            "place": city,
+            "lng": real_lon,
+            "lat": real_lat,
+            "elements": "",
+            "elements_colloquial": ""
+        }
+        await websocket.send_json({"type": "control_command", "data": ctrl_data, "visual_terminal": ui_type})
+        if real_lon and real_lat:
+            await websocket.send_json({"type": "query_info", "data": {"lonLat": [real_lon, real_lat], "address": city}, "visual_terminal": ui_type})
+        logging.info(f"[WS-Visual] 大屏初次连接成功(模式:{ui_type})，已主动推送初始地理坐标: [{city}] ({real_lon}, {real_lat})")
+    except Exception as e:
+        logger.warning(f"[WS-Visual] 大屏初次连接主动下发地理坐标失败: {e}")
+
     try:
         while True:
-            text = await websocket.receive_text()
-            try:
-                msg = json.loads(text)
-                msg_type = msg.get("type")
-                msg_data = msg.get("data", {})
-                if msg_type == "INIT_LOCATION":
-                    loc = msg.get("location", "")
-                    logger.info(f"[WS-Visual] 大屏请求恢复初始定位: {loc}")
-                elif msg_type == "restore_location":
-                    loc = msg_data.get("location")
-                    logger.info(f"[WS-Visual] 大屏请求恢复初始定位: {loc}")
-                    await visual_broadcast_manager.broadcast({
-                        "type": "restore_location",
-                        "location": loc
-                    })
-            except Exception as e:
-                logger.error(f"[WS-Visual] 消息解析异常: {e}")
+            await websocket.receive_text()
     except WebSocketDisconnect:
         pass
     except Exception as e:
@@ -210,7 +229,8 @@ async def ws_visual_endpoint(websocket: WebSocket):
     finally:
         visual_broadcast_manager.unregister(websocket)
 
-DEFAULT_CITY = "北京"
+from utils import FALLBACK_DEFAULT_CITY
+DEFAULT_CITY = FALLBACK_DEFAULT_CITY
 DASHSCOPE_API_KEY = os.getenv("DASHSCOPE_API_KEY", "")
 
 # ──────────────────────────────────────────────
@@ -221,11 +241,12 @@ async def voice_websocket_endpoint(websocket: WebSocket, voice: str = "Tina"):
     await websocket.accept()
     logger.info("[WS] 前端语音通话 WebSocket 已连接")
     
-    from backend.utils import load_config
+    from utils import load_config
     config = load_config()
     voice_model = config.get("voice_model_name")
     
     if voice_model == "sherpa-local":
+        from local_voice_handler import handle_local_voice_session
         await handle_local_voice_session(
             websocket=websocket,
             voice=voice,
@@ -235,7 +256,7 @@ async def voice_websocket_endpoint(websocket: WebSocket, voice: str = "Tina"):
         )
         return
     elif voice_model == "xunfei-realtime":
-        from backend.xunfei_realtime_handler import handle_xunfei_realtime_session
+        from xunfei_realtime_handler import handle_xunfei_realtime_session
         await handle_xunfei_realtime_session(
             websocket=websocket,
             voice=voice,
@@ -245,7 +266,7 @@ async def voice_websocket_endpoint(websocket: WebSocket, voice: str = "Tina"):
         )
         return
     elif voice_model and "qwen-audio" in voice_model.lower():
-        from backend.qwen_audio_realtime_handler import handle_qwen_audio_realtime_session
+        from qwen_audio_realtime_handler import handle_qwen_audio_realtime_session
         await handle_qwen_audio_realtime_session(
             websocket=websocket,
             voice=voice,
@@ -256,7 +277,7 @@ async def voice_websocket_endpoint(websocket: WebSocket, voice: str = "Tina"):
 
     else:
         # 默认或 Qwen-Omni 实时多模态模型 (qwen3.5-omni-plus-realtime / qwen3.5-omni-flash-realtime)
-        from backend.qwen_omni_realtime_handler import handle_qwen_omni_realtime_session
+        from qwen_omni_realtime_handler import handle_qwen_omni_realtime_session
         await handle_qwen_omni_realtime_session(
             websocket=websocket,
             api_key=DASHSCOPE_API_KEY,
@@ -385,7 +406,7 @@ ROUTER_SYSTEM_PROMPT = (
     "3. show_screen_layer (当用户明确要求在大屏展示、切换或定位雷达分布、卫星云图、台风路径、积水内涝、视频监控、无人机画面等可视化图层时选择)\n"
     "4. query_emergency_knowledge (当用户查询本地避灾避难场所、隐患点情况、救援队伍分布、储备库物资分布等本地应急防灾资源时选择)\n"
     "5. zoom_map (当用户要求放大地图或缩小地图时选择)\n"
-    "6. hangup (当用户表示要再见、挂断、结束对话时选择)\n"
+    "6. hangup (当且仅当用户表达明确的结束对话、挂断、告别意图时选择，如'再见'/'挂断'/'退下'。注意：当用户询问气象灾情、水退、撤退或询问系统操作等业务问题时，绝对不能选择 hangup！)\n"
     "7. none (如果不涉及以上任何工具，直接回答即可时选择)\n\n"
     "【极其重要】你必须且只能输出选项对应的英文标识（例如: 'get_weather_forecast' 或 'get_weather_forecast, query_history_disasters' 或 'none'）。"
     "绝对禁止输出任何多余的字词、标点符号、Markdown格式、拼音或解释说明。"
@@ -467,6 +488,14 @@ async def run_chat_workflow(message: str, history: List[ChatMessage] | List[dict
             normalized_history.append({"role": msg.role, "content": msg.content})
 
     async def event_generator():
+        # 1. 广播聆听状态以重置上一轮大屏字幕与状态，再下发 ASR 与思考状态
+        try:
+            await visual_broadcast_manager.broadcast({"type": "state_change", "state": "listening"})
+            await visual_broadcast_manager.broadcast({"type": "asr_result", "text": message, "is_final": True})
+            await visual_broadcast_manager.broadcast({"type": "state_change", "state": "thinking"})
+        except Exception:
+            pass
+
         # 1. Simulate speech transcription to align workflow (Step 1: stt)
         yield f'data: {json.dumps({"type": "debug_event", "step": "stt", "content": message}, ensure_ascii=False)}\n\n'
         
@@ -474,17 +503,17 @@ async def run_chat_workflow(message: str, history: List[ChatMessage] | List[dict
         today_str = datetime.now().strftime("%Y-%m-%d")
         
         # 决定大模型参数与渠道
-        from backend.utils import load_config
+        from utils import load_config
         config = load_config()
         
         if is_voice:
             model_name = config.get("voice_cascade_model_name") or config.get("text_model_name")
-            tool_mode = config.get("voice_cascade_model_tool_mode", "serial")
-            tool_style = config.get("voice_cascade_model_tool_style", "native")
+            tool_mode = config.get("voice_cascade_model_tool_mode") or "serial"
+            tool_style = config.get("voice_cascade_model_tool_style") or "native"
         else:
             model_name = config.get("text_model_name")
-            tool_mode = config.get("text_model_tool_mode", "serial")
-            tool_style = config.get("text_model_tool_style", "native")
+            tool_mode = config.get("text_model_tool_mode") or "serial"
+            tool_style = config.get("text_model_tool_style") or "native"
 
         print(f"\033[93m[LLM Brain Choice] Channel={'voice_cascade' if is_voice else 'text'}, Model={model_name} -> Mode={tool_mode}, Style={tool_style}\033[0m")
         is_openai_model = (tool_style == "native")
@@ -614,9 +643,14 @@ async def run_chat_workflow(message: str, history: List[ChatMessage] | List[dict
                             
                             keywords = tool_keywords.get(t_name, [])
                             matched_clauses = []
+                            from utils import is_exit_intent
                             for clause in clauses:
-                                if any(kw in clause for kw in keywords):
-                                    matched_clauses.append(clause)
+                                if t_name == "hangup":
+                                    if is_exit_intent(clause):
+                                        matched_clauses.append(clause)
+                                else:
+                                    if any(kw in clause for kw in keywords):
+                                        matched_clauses.append(clause)
                             
                             if matched_clauses:
                                 focused_message = "，".join(matched_clauses)
@@ -757,6 +791,7 @@ async def run_chat_workflow(message: str, history: List[ChatMessage] | List[dict
                         }
 
                     accumulated_content = ""
+                    has_broadcasted_speaking = False
                     async with client.stream("POST", api_url, headers=headers, json=second_payload) as stream_resp:
                         if stream_resp.status_code != 200:
                             yield f'data: {json.dumps({"type": "error", "message": f"LLM Turn 2 error {stream_resp.status_code}"})}\n\n'
@@ -775,12 +810,34 @@ async def run_chat_workflow(message: str, history: List[ChatMessage] | List[dict
                                     choices = data.get("choices", [])
                                     if choices and "delta" in choices[0] and "content" in choices[0]["delta"]:
                                         content = choices[0]["delta"]["content"]
+                                        if not has_broadcasted_speaking:
+                                            has_broadcasted_speaking = True
+                                            try:
+                                                await visual_broadcast_manager.broadcast({"type": "state_change", "state": "speaking"})
+                                            except Exception:
+                                                pass
                                         accumulated_content += content
+                                        if content:
+                                            try:
+                                                await visual_broadcast_manager.broadcast({"type": "subtitle", "text": content})
+                                            except Exception:
+                                                pass
                                         yield f'data: {json.dumps({"type": "delta", "content": content}, ensure_ascii=False)}\n\n'
                                 else:
                                     if "message" in data and "content" in data["message"]:
                                         content = data["message"]["content"]
+                                        if not has_broadcasted_speaking:
+                                            has_broadcasted_speaking = True
+                                            try:
+                                                await visual_broadcast_manager.broadcast({"type": "state_change", "state": "speaking"})
+                                            except Exception:
+                                                pass
                                         accumulated_content += content
+                                        if content:
+                                            try:
+                                                await visual_broadcast_manager.broadcast({"type": "subtitle", "text": content})
+                                            except Exception:
+                                                pass
                                         yield f'data: {json.dumps({"type": "delta", "content": content}, ensure_ascii=False)}\n\n'
                                     if data.get("done", False):
                                         yield f'data: {json.dumps({"type": "debug_event", "step": "tts", "content": accumulated_content}, ensure_ascii=False)}\n\n'
@@ -796,6 +853,11 @@ async def run_chat_workflow(message: str, history: List[ChatMessage] | List[dict
                     
                     if tool_style == "native":
                         chunk_size = 5
+                        try:
+                            await visual_broadcast_manager.broadcast({"type": "state_change", "state": "speaking"})
+                            await visual_broadcast_manager.broadcast({"type": "subtitle", "text": content_raw})
+                        except Exception:
+                            pass
                         for i in range(0, len(content_raw), chunk_size):
                             chunk = content_raw[i:i+chunk_size]
                             yield f'data: {json.dumps({"type": "delta", "content": chunk}, ensure_ascii=False)}\n\n'
@@ -822,6 +884,7 @@ async def run_chat_workflow(message: str, history: List[ChatMessage] | List[dict
                         }
                         
                         accumulated_content = ""
+                        has_broadcasted_speaking = False
                         async with client.stream("POST", api_url, headers=headers, json=chat_payload) as stream_resp:
                             if stream_resp.status_code != 200:
                                 yield f'data: {json.dumps({"type": "error", "message": f"LLM Chat error {stream_resp.status_code}"})}\n\n'
@@ -833,7 +896,18 @@ async def run_chat_workflow(message: str, history: List[ChatMessage] | List[dict
                                     data = json.loads(line_str)
                                     if "message" in data and "content" in data["message"]:
                                         content = data["message"]["content"]
+                                        if not has_broadcasted_speaking:
+                                            has_broadcasted_speaking = True
+                                            try:
+                                                await visual_broadcast_manager.broadcast({"type": "state_change", "state": "speaking"})
+                                            except Exception:
+                                                pass
                                         accumulated_content += content
+                                        if content:
+                                            try:
+                                                await visual_broadcast_manager.broadcast({"type": "subtitle", "text": content})
+                                            except Exception:
+                                                pass
                                         yield f'data: {json.dumps({"type": "delta", "content": content}, ensure_ascii=False)}\n\n'
                                     if data.get("done", False):
                                         break
@@ -844,6 +918,11 @@ async def run_chat_workflow(message: str, history: List[ChatMessage] | List[dict
 
         except Exception as e:
             yield f'data: {json.dumps({"type": "error", "message": str(e)})}\n\n'
+        finally:
+            try:
+                await visual_broadcast_manager.broadcast({"type": "state_change", "state": "idle"})
+            except Exception:
+                pass
 
     async for event in event_generator():
         yield event
@@ -917,7 +996,7 @@ async def sse_endpoint(request: Request):
 
 @app.get("/config")
 def get_config_endpoint(sherpa_model_dir: str = None):
-    from backend.utils import load_config, read_wake_word_from_model
+    from utils import load_config, read_wake_word_from_model
     cfg = load_config()
     # 如果接口传了特定的 sherpa_model_dir，则使用该 sherpa_model_dir 查询，否则使用当前配置中的 sherpa_model_dir
     target_dir = sherpa_model_dir if sherpa_model_dir else cfg.get("sherpa_model_dir")
@@ -929,8 +1008,8 @@ def get_config_endpoint(sherpa_model_dir: str = None):
 
 @app.post("/config")
 def update_config_endpoint(new_config: dict):
-    from backend.utils import save_config_split, write_wake_word_to_model
-    from backend.logger_setup import update_logging_levels
+    from utils import save_config_split, write_wake_word_to_model
+    from logger_setup import update_logging_levels
     
     # 提取 wake_word 和 sherpa_model_dir 写入对应的 keywords.txt 词表
     wake_word = new_config.get("wake_word")
@@ -949,9 +1028,14 @@ def update_config_endpoint(new_config: dict):
         file_lvl = merged_config.get("log_file_level", "WARNING")
         update_logging_levels(console_level=console_lvl, file_level=file_lvl)
 
-        # 实时触发声纹预加载缓存更新
-        from backend.qwen_audio_realtime_handler import preload_static_voiceprints
-        asyncio.create_task(preload_static_voiceprints(merged_config))
+        # 实时触发声纹预加载缓存更新（仅当配置为 qwen-audio 模型时）
+        voice_model_name = merged_config.get("voice_model_name", "")
+        if voice_model_name and "qwen-audio" in voice_model_name.lower():
+            try:
+                from qwen_audio_realtime_handler import preload_static_voiceprints
+                asyncio.create_task(preload_static_voiceprints(merged_config))
+            except ImportError:
+                pass
 
         return {"status": "success", "config": merged_config}
     except Exception as e:
@@ -1004,7 +1088,7 @@ async def resolve_effective_city(config_city: Optional[str] = None) -> tuple[str
     if config_city and config_city.strip():
         return config_city.strip(), "Local Config"
 
-    from backend.utils import get_city_by_ip
+    from utils import get_city_by_ip
     ip_city = await get_city_by_ip()
     return ip_city, "IP Auto-Location"
 
@@ -1049,7 +1133,7 @@ async def update_user_info(req: UserInfoUpdateRequest):
     # 2. 若更新了区域/城市，自动联动触发天气刷新广播
     if target_city:
         try:
-            from backend.weather_router import get_weather
+            from weather_router import get_weather
             weather_info = await get_weather(effective_city)
             await visual_broadcast_manager.broadcast({
                 "type": "weather_data",
@@ -1075,11 +1159,8 @@ async def update_user_info(req: UserInfoUpdateRequest):
 
 if __name__ == "__main__":
     uvicorn.run(
-        "backend.main:app",
+        app,          # 直接传对象，避免 uvicorn 二次 import main 模块导致模块级代码重复执行
         host="0.0.0.0",
         port=10850,
-        reload=True,
-        reload_dirs=["backend"],
-        reload_excludes=["logs/*", "*.log", "config/*"],
         log_level="info"
     )

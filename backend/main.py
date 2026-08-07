@@ -231,7 +231,9 @@ async def ws_visual_endpoint(websocket: WebSocket):
 
 from utils import FALLBACK_DEFAULT_CITY
 DEFAULT_CITY = FALLBACK_DEFAULT_CITY
-DASHSCOPE_API_KEY = os.getenv("DASHSCOPE_API_KEY", "")
+from openai_chat_handler import OpenAIChatHandler
+openai_chat_handler = OpenAIChatHandler()
+DASHSCOPE_API_KEY = openai_chat_handler.api_key
 
 # ──────────────────────────────────────────────
 # WebSocket 语音路由 (前端接入麦克风与播放)
@@ -519,9 +521,9 @@ async def run_chat_workflow(message: str, history: List[ChatMessage] | List[dict
         is_openai_model = (tool_style == "native")
         
         if is_openai_model:
-            api_url = "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions"
+            api_url = f"{openai_chat_handler.base_url}/chat/completions"
             headers = {
-                "Authorization": f"Bearer {DASHSCOPE_API_KEY}",
+                "Authorization": f"Bearer {openai_chat_handler.api_key}",
                 "Content-Type": "application/json"
             }
         else:

@@ -551,10 +551,8 @@ async def handle_qwen_omni_realtime_session(
     def on_response_done(event: dict):
         nonlocal audio_active
         audio_active = False
-        asyncio.run_coroutine_threadsafe(
-            visual_broadcast_manager.broadcast({"type": "state_change", "state": "listening"}), loop
-        )
-        asyncio.run_coroutine_threadsafe(_send_safe({"type": "state_change", "state": "listening"}), loop)
+        # 不在此处向大屏提前广播 listening，避免大屏在客户端音频尚在播报时提前结束 speaking 状态
+        # 统一由客户端在真正播报完毕后发送 {"type": "playback_state", "state": "listening"} 来精确驱动大屏切换
 
     async def handle_tool_call(event: dict):
         nonlocal expecting_weather_summary
@@ -570,12 +568,6 @@ async def handle_qwen_omni_realtime_session(
                 "type": "debug_event",
                 "step": "intent",
                 "content": f"根据您的需求，意图分析决定调用本地工具: {norm_name}"
-            })
-            await websocket.send_json({
-                "type": "debug_event",
-                "step": "tool_call",
-                "name": norm_name,
-                "arguments": raw_args
             })
         except Exception:
             pass
@@ -595,16 +587,6 @@ async def handle_qwen_omni_realtime_session(
             ctx = ToolContext(websocket=websocket, default_city=default_city_cfg)
             result_str = await execute_tool(norm_name, args, ctx)
             logger.info(f"🔨 [QwenOmni Tool Result] {norm_name} -> {result_str[:120]}...")
-
-            try:
-                await websocket.send_json({
-                    "type": "debug_event",
-                    "step": "tool_result",
-                    "name": norm_name,
-                    "result": result_str[:300]
-                })
-            except Exception:
-                pass
 
             # 广播天气工具结果
             if norm_name == "get_weather_forecast":
@@ -670,6 +652,12 @@ async def handle_qwen_omni_realtime_session(
                     p_type = payload.get("type")
                     if p_type == "hangup":
                         session_active = False
+                    elif p_type == "playback_state":
+                        pb_state = payload.get("state", "listening")
+                        logger.info(f"🔊 [QwenOmni] 收到客户端播报状态反向同步: '{pb_state}' -> 全局广播大屏")
+                        asyncio.create_task(
+                            visual_broadcast_manager.broadcast({"type": "state_change", "state": pb_state})
+                        )
                     elif p_type == "interrupt":
                         logger.info("⚡ [QwenOmni] 收到前端唤醒硬打断指令，强行重置会话！")
                         client._audio_suppressed = True

@@ -179,8 +179,8 @@ async def synthesize_and_play(text: str, tts, speaker_id: int, websocket: WebSoc
         samples_arr = np.array(audio.samples, dtype=np.float32)
         pcm_bytes = (samples_arr * 32768.0).astype(dtype=np.int16).tobytes()
         
-        # 将音频字节流发回前端播放
-        await websocket.send_bytes(pcm_bytes)
+        # 将音频字节流加上 0x00 协议头后发回前端播放
+        await websocket.send_bytes(b"\x00" + pcm_bytes)
         
         # 兼容输出转录与展示字幕
         await websocket.send_json({"type": "output_transcript", "data": text})

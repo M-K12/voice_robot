@@ -727,7 +727,7 @@ async def handle_qwen_audio_realtime_session(
             is_first_audio_frame = False
             asyncio.run_coroutine_threadsafe(
                 visual_broadcast_manager.broadcast({"type": "state_change", "state": "speaking"}), loop)
-        asyncio.run_coroutine_threadsafe(websocket.send_bytes(audio_bytes), loop)
+        asyncio.run_coroutine_threadsafe(websocket.send_bytes(b"\x00" + audio_bytes), loop)
 
     def on_response_created(event):
         nonlocal is_first_audio_frame, audio_active
@@ -776,11 +776,6 @@ async def handle_qwen_audio_realtime_session(
                     "type": "debug_event", "step": "intent",
                     "content": f"根据您的需求，意图分析决定调用本地工具: {name}",
                 })
-                await websocket.send_json({
-                    "type": "debug_event", "step": "tool_call",
-                    "name": name,
-                    "arguments": arguments_str
-                })
             except Exception:
                 pass
             try:
@@ -793,15 +788,6 @@ async def handle_qwen_audio_realtime_session(
                 result_payload = await execute_tool(name, arguments_str, ctx)
                 expecting_weather_summary = ctx.expecting_weather_summary
                 session_active = ctx.session_active
-
-                try:
-                    await websocket.send_json({
-                        "type": "debug_event", "step": "tool_result",
-                        "name": name,
-                        "result": str(result_payload)[:300]
-                    })
-                except Exception:
-                    pass
             except Exception as e:
                 logger.error(f"[QwenAudio Tool] execute error: {e}")
                 traceback.print_exc()

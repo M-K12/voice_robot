@@ -1,78 +1,93 @@
 """
-后端 .py → .so 编译脚本 (Cython)
-递归编译 backend/ 下所有 .py 文件（含 tools/ 子包）
-用法: python deploy/compile_so.py build_ext --inplace
+================================================================================
+沙盒模式 Cython 编译引擎 (.py → .so / .pyd)
+用法:
+  python deploy/compile_so.py <target_dir>
+  示例: python deploy/compile_so.py deploy/staging_backend/backend
+================================================================================
 """
 
 import os
 import sys
 import glob
 import shutil
-import json
 from setuptools import setup, Extension
 from Cython.Build import cythonize
 
-# ── 配置 ──
-# 所有可能的 Handler 模块
-ALL_HANDLER_FILES = {
-    "xunfei_realtime_handler.py",
-    "qwen_audio_realtime_handler.py",
-    "qwen_omni_realtime_handler.py",
-    "omni_realtime_client.py",
-    "local_voice_handler.py",
-}
-
-# 基础不编译的文件和目录
-EXCLUDE_FILES = {"main.py", "compile_so.py", "__init__.py", "voice_worker.py", "_virtualenv.py", "activate_this.py"}
-EXCLUDE_DIRS = {"build", "dist", "temp_py_backup", "__pycache__", "venv", ".venv"}
-
-# ── 定位目录 ──
 script_dir = os.path.dirname(os.path.abspath(__file__))
 project_root = os.path.dirname(script_dir)
-os.chdir(project_root)
 
-# ── 编译所有的 Handler 模块，确保完整功能和全模型支持 ──
-print(f"📦 全量编译所有 Backend Handler 模块: {sorted(list(ALL_HANDLER_FILES))}")
+# 解析目标目录参数
+target_dir_arg = "backend"
+if len(sys.argv) > 1 and not sys.argv[1].startswith("-"):
+    target_dir_arg = sys.argv[1]
 
-# ── 递归收集需要编译的 backend 目录下 .py 文件 ──
+# 计算绝对路径
+if os.path.isabs(target_dir_arg):
+    target_dir_abs = target_dir_arg
+else:
+    target_dir_abs = os.path.abspath(os.path.join(project_root, target_dir_arg))
+
+base_work_dir = os.path.dirname(target_dir_abs) if os.path.basename(target_dir_abs) in ["backend", "pyside_app"] else project_root
+os.chdir(base_work_dir)
+
+EXCLUDE_FILES = {
+    "main.py",
+    "compile_so.py",
+    "build_backend.py",
+    "build_pyside.py",
+    "__init__.py",
+    "_virtualenv.py",
+    "activate_this.py"
+}
+
+EXCLUDE_DIRS = {
+    "build", "dist", "temp_py_backup", "__pycache__",
+    "venv", ".venv", "node_modules", ".git"
+}
+
+
 def collect_py_files(target_dir: str) -> list:
-    """递归收集 target_dir 下所有需编译的 .py 文件"""
     results = []
+    if not os.path.isdir(target_dir):
+        return results
+
     for dirpath, dirnames, filenames in os.walk(target_dir):
-        # 过滤排除的子目录
         dirnames[:] = [d for d in dirnames if not d.startswith(".") and d not in EXCLUDE_DIRS]
         for fn in filenames:
             if fn.startswith("_virtualenv") or fn.startswith("activate_this") or fn.startswith("."):
                 continue
             if fn.endswith(".py") and fn not in EXCLUDE_FILES:
-                rel_path = os.path.relpath(os.path.join(dirpath, fn), project_root)
+                rel_path = os.path.relpath(os.path.join(dirpath, fn), base_work_dir)
                 results.append(rel_path)
     return sorted(results)
 
-py_files = collect_py_files("backend")
+
+py_files = collect_py_files(target_dir_abs)
 
 if not py_files:
-    print("⚠️ 未找到需要编译的 .py 文件")
+    print(f"⚠️ [Cython SandBox Build] 在 [{target_dir_abs}] 目录下未找到需要编译的 .py 文件")
     sys.exit(0)
 
-print("=" * 56)
-print("  Cython 编译: .py → .so")
-print("=" * 56)
-print(f"项目根目录: {project_root}")
-print(f"将编译以下 {len(py_files)} 个文件:")
+module_name_tag = os.path.basename(target_dir_abs)
+print("=" * 64)
+print(f"  🚀 Cython 沙盒编译: .py → .so / .pyd (工作沙盒: {target_dir_abs})")
+print("=" * 64)
+print(f"工作根目录: {base_work_dir}")
+print(f"搜集到 {len(py_files)} 个源文件:")
 for f in py_files:
     print(f"  • {f}")
 print()
 
-# ── Cython 编译 ──
-ext_modules = [
-    Extension(
-        os.path.splitext(f)[0].replace(os.sep, "."),
+ext_modules = []
+for f in py_files:
+    mod_name = os.path.splitext(f)[0].replace(os.sep, ".")
+    ext = Extension(
+        mod_name,
         [f],
-        extra_compile_args=["-O3", "-Wno-unused-function", "-Wno-unreachable-code"],
+        extra_compile_args=["-O3", "-Wno-unused-function", "-Wno-unreachable-code"] if sys.platform != "win32" else ["/O2"]
     )
-    for f in py_files
-]
+    ext_modules.append(ext)
 
 extensions = cythonize(
     ext_modules,
@@ -80,50 +95,68 @@ extensions = cythonize(
     compiler_directives={
         "boundscheck": False,
         "wraparound": False,
-        "annotation_typing": False,  # 允许 FastAPI 使用 Query/Path/Body 等对象作为类型注解默认值
+        "annotation_typing": False,
     },
 )
 
+packages = [module_name_tag]
+for root, dirs, _ in os.walk(target_dir_abs):
+    for d in dirs:
+        if not d.startswith(".") and d not in EXCLUDE_DIRS:
+            packages.append(os.path.relpath(os.path.join(root, d), base_work_dir).replace(os.sep, "."))
+packages = list(set(packages))
+
+sys.argv = [sys.argv[0], "build_ext", "--inplace"]
+
 setup(
-    name="voice_robot_backend",
+    name=f"xiaoan_sandbox_{module_name_tag}",
     ext_modules=extensions,
     package_dir={"": "."},
-    packages=["backend", "backend.tools"],
+    packages=packages,
     script_args=["build_ext", "--inplace"],
 )
 
-# ── 编译后清理 ──
 print()
-print("-" * 56)
-print("编译完成，开始清理中间 C 文件...")
+print("-" * 64)
+print("🧹 编译完成，正在清理沙盒内中间 .c / .cpp 文件...")
 
-# 1. 删除 .c 中间文件
 for py_file in py_files:
-    c_file = os.path.splitext(py_file)[0] + ".c"
-    if os.path.isfile(c_file):
-        os.remove(c_file)
-        print(f"  🗑️ 删除中间文件: {c_file}")
+    base_path = os.path.splitext(py_file)[0]
+    for ext in [".c", ".cpp"]:
+        c_file = base_path + ext
+        if os.path.isfile(c_file):
+            try:
+                os.remove(c_file)
+                print(f"  🗑️ 删除中间文件: {c_file}")
+            except Exception:
+                pass
 
-# 2. 检查编译结果
 compiled_count = 0
 for py_file in py_files:
     module_name = os.path.splitext(py_file)[0]
     parent_dir = os.path.dirname(py_file) or "."
-    so_pattern = os.path.join(parent_dir, f"{os.path.basename(module_name)}.cpython-*.so")
-    so_files = glob.glob(so_pattern)
-    if so_files:
+    base_name = os.path.basename(module_name)
+    
+    patterns = [
+        os.path.join(parent_dir, f"{base_name}.cpython-*.so"),
+        os.path.join(parent_dir, f"{base_name}.cpython-*.pyd"),
+        os.path.join(parent_dir, f"{base_name}.so"),
+        os.path.join(parent_dir, f"{base_name}.pyd"),
+    ]
+    found_files = []
+    for pat in patterns:
+        found_files.extend(glob.glob(pat))
+        
+    if found_files:
         compiled_count += 1
-        for sf in so_files:
+        for sf in found_files:
             print(f"  ✅ {py_file} → {sf}")
     else:
-        print(f"  ❌ {py_file} 编译失败（未找到 .so）")
+        print(f"  ❌ {py_file} 编译失败")
 
-# 3. 删除 build 目录
 if os.path.exists("build"):
-    shutil.rmtree("build")
-    print("  🗑️ 删除 build/ 目录")
+    shutil.rmtree("build", ignore_errors=True)
 
-print()
-print("=" * 56)
-print(f"✅ 完成！成功编译 {compiled_count}/{len(py_files)} 个模块")
-print("=" * 56)
+print("=" * 64)
+print(f"🎉 沙盒 Cython 编译完成！成功生成库: {compiled_count}/{len(py_files)}")
+print("=" * 64)

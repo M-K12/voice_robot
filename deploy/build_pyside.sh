@@ -1,7 +1,7 @@
 #!/bin/bash
 # ================================================================
-# 后端 FastAPI 服务专属一键打包脚本 (Linux / macOS)
-# 用法: bash deploy/build_backend.sh
+# PySide6 桌面前端专属一键打包脚本 (Linux / macOS)
+# 用法: bash deploy/build_pyside_app.sh
 # ================================================================
 
 set -e
@@ -12,17 +12,17 @@ PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 cd "$PROJECT_ROOT"
 
 echo "========================================================"
-echo "   【后端专属打包】FastAPI 服务 (.py -> .so -> Executable)"
+echo "   【前端桌面端专属打包】PySide6 客户端 (.py -> .so -> Executable)"
 echo "========================================================"
 echo ""
 
 if command -v uv &>/dev/null; then
-    uv run python deploy/build_backend.py
+    uv run python deploy/build_pyside.py
 else
-    python3 deploy/build_backend.py
+    python3 deploy/build_pyside.py
 fi
 
 echo ""
 echo "========================================================"
-echo " ✅ 后端构建成功！产物位于 dist/backend/xiaoan_backend"
+echo " ✅ 桌面前端构建成功！产物位于 dist/pyside_app/xiaoan_voice_desktop"
 echo "========================================================"

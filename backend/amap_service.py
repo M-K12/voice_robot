@@ -34,6 +34,87 @@ class AmapService:
             
         self._client = httpx.AsyncClient(timeout=10.0, follow_redirects=True)
         self._url = "https://restapi.amap.com/v3/place/text"
+        self._cache_file = os.path.join(os.path.dirname(__file__), "static", "poi_cache.json")
+        self._cache = self._load_disk_cache()
+
+    def _load_disk_cache(self) -> dict:
+        """
+        分模块极速合并 POI 缓存:
+        1. 基础包：backend/static/china_cities.json (全国 800+ 地级市主节点，永恒不变)
+        2. 当地专属包：backend/static/cities/{default_city}.json (当前常驻城市/县深度下辖节点)
+        """
+        cache = {}
+        static_dir = os.path.join(os.path.dirname(__file__), "static")
+        
+        # 1. 加载全国所有地级市 (china_cities.json)
+        china_cities_path = os.path.join(static_dir, "china_cities.json")
+        if os.path.exists(china_cities_path):
+            try:
+                import json
+                with open(china_cities_path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    for k, v in data.items():
+                        if isinstance(v, list) and len(v) == 7:
+                            cache[k] = tuple(v)
+            except Exception as e:
+                logger.warning(f"[高德POI] 加载全国地级市缓存 (china_cities.json) 失败: {e}")
+
+        # 2. 读取 configs/global.json 获取 default_city 并加载对应专属城市的 cities/{default_city}.json
+        try:
+            import json
+            config_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "configs", "global.json")
+            default_city = "歙县"
+            if os.path.exists(config_path):
+                with open(config_path, "r", encoding="utf-8") as f:
+                    cfg = json.load(f)
+                    default_city = cfg.get("default_city", "歙县")
+            
+            city_json_path = os.path.join(static_dir, "cities", f"{default_city}.json")
+            if os.path.exists(city_json_path):
+                with open(city_json_path, "r", encoding="utf-8") as f:
+                    local_data = json.load(f)
+                    for k, v in local_data.items():
+                        if isinstance(v, list) and len(v) == 7:
+                            cache[k] = tuple(v)
+        except Exception as e:
+            logger.warning(f"加载当前城市专属POI缓存失败: {e}")
+
+        logger.info("POI 缓存装载完毕")
+        return cache
+
+    def _save_disk_cache(self):
+        """将运行时新增的 POI 动态追加写盘至当前城市的专属 JSON 包中"""
+        try:
+            import json
+            config_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "configs", "global.json")
+            default_city = "歙县"
+            if os.path.exists(config_path):
+                with open(config_path, "r", encoding="utf-8") as f:
+                    cfg = json.load(f)
+                    default_city = cfg.get("default_city", "歙县")
+                    
+            cities_dir = os.path.join(os.path.dirname(__file__), "static", "cities")
+            os.makedirs(cities_dir, exist_ok=True)
+            city_json_path = os.path.join(cities_dir, f"{default_city}.json")
+            
+            # 读取已有的专属包数据，合并新追加的 POI
+            existing_local = {}
+            if os.path.exists(city_json_path):
+                try:
+                    with open(city_json_path, "r", encoding="utf-8") as f:
+                        existing_local = json.load(f)
+                except Exception:
+                    pass
+            
+            # 将内存中属于当地的新 POI 追加存入
+            for k, v in self._cache.items():
+                if default_city in k or default_city in str(v):
+                    existing_local[k] = list(v)
+
+            with open(city_json_path, "w", encoding="utf-8") as f:
+                json.dump(existing_local, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            logger.warning(f"[高德POI] 写入城市 [{default_city}] 专属磁盘缓存失败: {e}")
         
     async def get_poi_coordinates(self, address: str, city: Optional[str] = None) -> Tuple[Optional[float], Optional[float], Optional[str], Optional[str], Optional[str], Optional[str], Optional[str]]:
         """
@@ -44,6 +125,11 @@ class AmapService:
         """
         if not address:
             return None, None, None, None, None, None, None
+
+        cache_key = f"{address.strip().lower()}_{city or ''}"
+        if cache_key in self._cache:
+            logger.info(f"位置校验完成➡️  {address}")
+            return self._cache[cache_key]
             
         params = {
             "key": self._api_key,
@@ -110,7 +196,10 @@ class AmapService:
                     if location and "," in location:
                         lon_str, lat_str = location.split(",")
                         logger.info(f"[高德POI] 命中: {formatted_name} => ({lon_str}, {lat_str})")
-                        return float(lon_str), float(lat_str), formatted_name, pname, cityname, adname, poi_name
+                        res = (float(lon_str), float(lat_str), formatted_name, pname, cityname, adname, poi_name)
+                        self._cache[cache_key] = res
+                        self._save_disk_cache()
+                        return res
                         
             # 如果走到了这里说明查询不到有效信息
             error_info = result.get("info", "未查找到相关结果")

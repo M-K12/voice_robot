@@ -461,8 +461,6 @@ async def execute_tool(name: str, arguments_str: str, ctx: ToolContext) -> str:
                 visual_broadcast_manager=visual_broadcast_manager,
                 reason="模型触发 hangup 工具挂断会话"
             )
-            ctx.session_active = False
-                
             result_content = {"status": "success"}
             logger.info(f"[Tool Result] hangup -> Result: {json.dumps(result_content, ensure_ascii=False)}")
             if ctx.websocket: await ctx.websocket.send_json({

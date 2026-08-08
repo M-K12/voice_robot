@@ -1,4 +1,7 @@
 {
+    "production_mode": true,
     "start_fullscreen": false,
-    "show_weather_card": false
-}
+    "silent_startup": false,
+    "global_shortcut": "Alt+X",
+    "aec_filter_length": 2048
+}

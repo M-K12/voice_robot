@@ -5,6 +5,7 @@ import asyncio
 import logging
 import traceback
 import numpy as np
+from pathlib import Path
 from fastapi import WebSocket, WebSocketDisconnect
 
 # 修复 Windows 下 "The requested API version [23] is not available" 错误
@@ -12,7 +13,6 @@ if sys.platform == "win32":
     import importlib.util
     spec = importlib.util.find_spec("sherpa_onnx")
     if spec and spec.origin:
-        from pathlib import Path
         sherpa_onnx_dir = Path(spec.origin).parent
         if hasattr(os, "add_dll_directory"):
             try:
@@ -29,14 +29,22 @@ except ImportError:
 logger = logging.getLogger("xiaoan.local_voice")
 
 from utils import is_exit_intent
+from handlers.openai_chat_handler import OpenAIChatHandler
 
 
 # 全局模型实例缓存 (单例)
 _streaming_asr = None
 _offline_asr = None
 _tts_engine = None
+_chat_handler = None
 
 import re
+
+def get_shared_chat_handler() -> OpenAIChatHandler:
+    global _chat_handler
+    if _chat_handler is None:
+        _chat_handler = OpenAIChatHandler()
+    return _chat_handler
 
 def clean_text_for_vits(text: str) -> str:
     """将大模型文本中的 Emoji、Markdown 标志剥离，并将英文词汇/英文字母转换为中文谐音，便于纯中文 VITS 朗读"""
@@ -96,7 +104,7 @@ def get_streaming_asr():
         raise ImportError("sherpa-onnx 未安装，无法启动本地 ASR 引擎。")
     if _streaming_asr is None:
         logger.info(f"正在初始化流式 ASR 识别器 (Zipformer 80M), provider: {_get_local_provider()}...")
-        project_root = Path(__file__).parent.parent.resolve()
+        project_root = Path(__file__).parent.parent.parent.resolve()
         model_dir = project_root / "sherpa" / "models" / "sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20"
         
         _streaming_asr = sherpa_onnx.OnlineRecognizer.from_transducer(
@@ -120,7 +128,7 @@ def get_offline_asr():
         raise ImportError("sherpa-onnx 未安装，无法启动本地 ASR 引擎。")
     if _offline_asr is None:
         logger.info(f"正在初始化离线 ASR 识别器 (SenseVoice-Small), provider: {_get_local_provider()}...")
-        project_root = Path(__file__).parent.parent.resolve()
+        project_root = Path(__file__).parent.parent.parent.resolve()
         model_dir = project_root / "sherpa" / "models" / "sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17"
         
         # 优先使用 int8 模型
@@ -145,7 +153,7 @@ def get_tts_engine():
         raise ImportError("sherpa-onnx 未安装，无法启动本地 TTS 引擎。")
     if _tts_engine is None:
         logger.info(f"正在初始化离线 TTS 合成器 (VITS), provider: {_get_local_provider()}...")
-        project_root = Path(__file__).parent.parent.resolve()
+        project_root = Path(__file__).parent.parent.parent.resolve()
         model_dir = project_root / "sherpa" / "models" / "vits-icefall-zh-aishell3"
         
         tts_config = sherpa_onnx.OfflineTtsConfig(
@@ -168,21 +176,15 @@ def get_tts_engine():
 
 async def synthesize_and_play(text: str, tts, speaker_id: int, websocket: WebSocket, speed_rate: float = 1.0):
     """将文本合成为语音并下发"""
-    # 净化文本：剥离表情/Markdown，并将英文单词和字母转换为中文谐音以便 VITS 顺利朗读
     clean_text = clean_text_for_vits(text).strip()
     if not clean_text:
         return
     try:
-        # 在独立线程中合成，传入 speed 语速参数，防止阻塞 WebSocket 接收主循环
         audio = await asyncio.to_thread(tts.generate, clean_text, sid=speaker_id, speed=speed_rate)
-        # 先将 samples 序列转换为 numpy 数组，再进行 16bit 标定和二进制转换，防止 TypeError
         samples_arr = np.array(audio.samples, dtype=np.float32)
         pcm_bytes = (samples_arr * 32768.0).astype(dtype=np.int16).tobytes()
         
-        # 将音频字节流加上 0x00 协议头后发回前端播放
         await websocket.send_bytes(b"\x00" + pcm_bytes)
-        
-        # 兼容输出转录与展示字幕
         await websocket.send_json({"type": "output_transcript", "data": text})
     except Exception as e:
         logger.error(f"[Local-TTS] Synthesis failed for text '{text}': {e}")
@@ -192,11 +194,11 @@ async def handle_local_voice_session(
     websocket: WebSocket, 
     voice: str, 
     config: dict, 
-    run_chat_workflow_fn,
-    visual_broadcast_manager
+    visual_broadcast_manager: Any
 ):
     """接管本地 ASR + TTS 的 WebSocket 通话会话主循环"""
     asr_mode = config.get("asr_mode", "offline")
+    default_city = config.get("default_city", "")
     speaker_id = int(config.get("local_tts_speaker_id", 0))
     try:
         if voice and voice.isdigit():
@@ -205,14 +207,12 @@ async def handle_local_voice_session(
         pass
     speed_rate = float(config.get("local_tts_speed_rate", 1.05))
     
-    # 动态载入级联 VAD 静音阈值与判定时长
     silence_timeout = float(config.get("cascade_silence_duration_ms", 1200)) / 1000.0
     energy_threshold = float(config.get("cascade_vad_energy_threshold", 0.025))
     
     print(f"\n\033[95m[Local-Voice] ===== 本地语音会话已开启 =====\033[0m")
     print(f"\033[95m[Local-Voice] ASR 模式: {asr_mode}, TTS 发音人 ID: {speaker_id}, 语速: {speed_rate}, VAD 静音判定: {silence_timeout}s, 能量阈值: {energy_threshold}\033[0m")
     
-    # 1. 动态加载本地 ASR 与 TTS 引擎
     try:
         tts_engine = get_tts_engine()
         if asr_mode == "streaming":
@@ -220,24 +220,20 @@ async def handle_local_voice_session(
             asr_stream = asr_recognizer.create_stream()
         else:
             asr_recognizer = get_offline_asr()
-            audio_buffer = []  # 收集用户一句话中的 samples
+            audio_buffer = []
     except Exception as e:
         print(f"\033[91m[Local-Voice] 初始化引擎失败: {e}\033[0m")
         traceback.print_exc()
         await websocket.send_json({"type": "error", "message": f"引擎加载失败: {str(e)}"})
         return
 
-    # 2. 状态变量
     session_active = True
     silence_duration = 0.0
-    chunk_duration = 0.1  # 前端每次发包大概 100ms 的音频
+    chunk_duration = 0.1
     last_asr_result = ""
-    chat_history = []  # 本次通话的多轮对话历史
-    
-    # VAD 状态控制，避免背景噪声在说话前或闲置时触发大模型
+    chat_history = []
     has_spoken = False
     
-    # 广播大屏状态：开启 listening
     await visual_broadcast_manager.broadcast({"type": "state_change", "state": "listening"})
     await websocket.send_json({"type": "debug_event", "step": "asr_ready", "content": f"本地语音引擎就绪，识别模式：{asr_mode}"})
     print(f"\033[92m[Local-Voice] 本地语音接收循环就绪，等待音频输入...\033[0m")
@@ -249,10 +245,8 @@ async def handle_local_voice_session(
                 data = msg["bytes"]
                 if len(data) > 1 and data[0] == 0x00:
                     pcm_bytes = data[1:]
-                    # 将 16bit 16kHz 单声道 PCM 还原为 float32
                     samples = np.frombuffer(pcm_bytes, dtype=np.int16).astype(np.float32) / 32768.0
                     
-                    # 能量检测
                     energy = np.sqrt(np.mean(samples ** 2)) if len(samples) > 0 else 0.0
                     is_silence = energy < energy_threshold
                     
@@ -265,7 +259,6 @@ async def handle_local_voice_session(
                             print(f"\n\033[93m[Local-VAD] 检测到声学信号 (能量: {energy:.4f})，开始采集用户语音...\033[0m")
 
                     if asr_mode == "streaming":
-                        # ---- 流式 ASR (Zipformer) ----
                         asr_stream.accept_waveform(16000, samples)
                         while asr_recognizer.is_ready(asr_stream):
                             asr_recognizer.decode_stream(asr_stream)
@@ -273,12 +266,10 @@ async def handle_local_voice_session(
                         current_text = asr_recognizer.get_result(asr_stream)
                         if current_text and current_text != last_asr_result:
                             last_asr_result = current_text
-                            # 实时更新屏幕和调试状态
                             await websocket.send_json({"type": "input_transcript", "data": current_text})
                             await visual_broadcast_manager.broadcast({"type": "asr_result", "text": current_text})
                             print(f"\033[90m[Local-ASR] 流式中间文字: '{current_text}'\033[0m", end="\r")
 
-                        # 只有在说话过且静音达到设定阈值时触发对话逻辑
                         if silence_duration >= silence_timeout and has_spoken:
                             final_text = current_text.strip()
                             print(f"\n\033[92m[Local-VAD] 说话结束。最终识别文本: '{final_text}'\033[0m")
@@ -286,21 +277,18 @@ async def handle_local_voice_session(
                             if final_text:
                                 await run_voice_chat_pipeline(
                                     final_text, chat_history, tts_engine, speaker_id, 
-                                    websocket, run_chat_workflow_fn, visual_broadcast_manager,
+                                    websocket, visual_broadcast_manager, default_city,
                                     speed_rate=speed_rate
                                 )
                             
-                            # 重置本次状态
                             asr_stream = asr_recognizer.create_stream()
                             last_asr_result = ""
                             silence_duration = 0.0
                             has_spoken = False
                     else:
-                        # ---- 非流式 ASR (SenseVoice-Small) ----
                         if has_spoken:
                             audio_buffer.append(samples)
                         
-                        # 只有在用户说话中途且静音超过设定阈值时触发
                         if silence_duration >= silence_timeout and has_spoken and len(audio_buffer) > 5:
                             print(f"\033[92m[Local-VAD] 说话结束。正在使用 SenseVoice-Small 识别音频...\033[0m")
                             full_audio = np.concatenate(audio_buffer)
@@ -322,7 +310,7 @@ async def handle_local_voice_session(
                                 
                                 await run_voice_chat_pipeline(
                                     final_text, chat_history, tts_engine, speaker_id, 
-                                    websocket, run_chat_workflow_fn, visual_broadcast_manager,
+                                    websocket, visual_broadcast_manager, default_city,
                                     speed_rate=speed_rate
                                 )
                             else:
@@ -366,8 +354,8 @@ async def run_voice_chat_pipeline(
     tts_engine,
     speaker_id: int,
     websocket: WebSocket,
-    run_chat_workflow_fn,
     visual_broadcast_manager,
+    default_city: str,
     speed_rate: float = 1.0
 ):
     """将 ASR 结果喂给核心大模型应答流，并流式断句通过 TTS 播放"""
@@ -383,55 +371,33 @@ async def run_voice_chat_pipeline(
     
     ai_reply_text = ""
     sentence_buffer = ""
-    # 仅使用终结性标点进行断句，避免逗号和冒号将句子切得过碎，保证说话语气连贯
     punctuations = ["。", "？", "！", "；", ".", "?", "!", ";", "\n"]
+    chat_handler = get_shared_chat_handler()
     
     try:
-        async for line in run_chat_workflow_fn(final_text, chat_history, is_voice=True):
-            if not line.strip(): 
-                continue
+        async for token in chat_handler.stream_project_text_chat(message=final_text, history=chat_history, city=default_city):
+            ai_reply_text += token
+            sentence_buffer += token
             
-            # 精密剥离 data 前缀与空白，防止 JSON 解析报错
-            clean_line = line.strip()
-            if clean_line.startswith("data: "):
-                clean_line = clean_line[6:].strip()
-            if clean_line == "[DONE]":
-                break
+            await websocket.send_json({"type": "output_transcript", "data": ai_reply_text})
+            await visual_broadcast_manager.broadcast({"type": "subtitle", "text": ai_reply_text})
+            
+            has_punc = any(p in sentence_buffer for p in punctuations)
+            if has_punc:
+                last_punc_idx = -1
+                for idx, char in enumerate(sentence_buffer):
+                    if char in punctuations:
+                        last_punc_idx = idx
                 
-            try:
-                data = json.loads(clean_line)
-                if data.get("type") == "debug_event":
-                    await websocket.send_json(data)
-                elif data.get("type") == "delta":
-                    content = data.get("content", "")
-                    ai_reply_text += content
-                    sentence_buffer += content
+                if last_punc_idx != -1:
+                    sub_sentence = sentence_buffer[:last_punc_idx+1].strip()
+                    sentence_buffer = sentence_buffer[last_punc_idx+1:]
                     
-                    # 发送流式回复文本给前端显示气泡
-                    await websocket.send_json({"type": "output_transcript", "data": ai_reply_text})
-                    await visual_broadcast_manager.broadcast({"type": "subtitle", "text": ai_reply_text})
-                    
-                    # 检查断句符号
-                    has_punc = any(p in sentence_buffer for p in punctuations)
-                    if has_punc:
-                        last_punc_idx = -1
-                        for idx, char in enumerate(sentence_buffer):
-                            if char in punctuations:
-                                last_punc_idx = idx
-                        
-                        if last_punc_idx != -1:
-                            sub_sentence = sentence_buffer[:last_punc_idx+1].strip()
-                            sentence_buffer = sentence_buffer[last_punc_idx+1:]
-                            
-                            if sub_sentence:
-                                print(f"\033[90m[Local-LLM] 吐句分词: '{sub_sentence}'\033[0m")
-                                await visual_broadcast_manager.broadcast({"type": "state_change", "state": "speaking"})
-                                await synthesize_and_play(sub_sentence, tts_engine, speaker_id, websocket, speed_rate=speed_rate)
-            except Exception as e:
-                # 捕获局部 JSON 报错不打断整体会话
-                pass
+                    if sub_sentence:
+                        print(f"\033[90m[Local-LLM] 吐句分词: '{sub_sentence}'\033[0m")
+                        await visual_broadcast_manager.broadcast({"type": "state_change", "state": "speaking"})
+                        await synthesize_and_play(sub_sentence, tts_engine, speaker_id, websocket, speed_rate=speed_rate)
                 
-        # 补全末尾缓冲
         if sentence_buffer.strip():
             final_sub = sentence_buffer.strip()
             print(f"\033[90m[Local-LLM] 吐句分词(完结): '{final_sub}'\033[0m")
@@ -451,4 +417,3 @@ async def run_voice_chat_pipeline(
     finally:
         await visual_broadcast_manager.broadcast({"type": "state_change", "state": "idle"})
         print(f"\033[95m[Local-Voice] ===== 对话管道流执行完毕 =====\033[0m")
-

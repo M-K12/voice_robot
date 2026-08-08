@@ -11,7 +11,6 @@ from starlette.websockets import WebSocketState
 
 logger = logging.getLogger("xiaoan.utils")
 
-FALLBACK_DEFAULT_CITY = "歙县"
 
 def _get_configs_dir() -> Path:
     """Intelligently locate configs directory across standalone executable and dev environments."""
@@ -29,44 +28,6 @@ def _get_configs_dir() -> Path:
             return c
     return Path(__file__).parent.parent.resolve() / "configs"
 
-_CITY_TO_AREACODE = {}
-_AREACODE_TO_STATION = {}
-_DICT_LOADED = False
-
-def _load_station_dicts():
-    """Load city and station mapping files into memory."""
-    global _CITY_TO_AREACODE, _AREACODE_TO_STATION, _DICT_LOADED
-    if _DICT_LOADED:
-        return
-    base_dir = Path(__file__).parent.parent / "spd-weather" / "assets"
-    try:
-        with open(base_dir / "city_to_areacode.json", "r", encoding="utf-8") as f:
-            _CITY_TO_AREACODE = json.load(f)
-        with open(base_dir / "areacode_to_station.json", "r", encoding="utf-8") as f:
-            _AREACODE_TO_STATION = json.load(f)
-        _DICT_LOADED = True
-    except Exception:
-        pass
-
-def get_city_lonlat(city: str) -> Optional[list[float]]:
-    """Look up latitude and longitude of a city from local station dictionaries."""
-    _load_station_dicts()
-    candidates = [city, city.replace("市", ""), city + "市"]
-    area_code = None
-    for cand in candidates:
-        area_code = _CITY_TO_AREACODE.get(cand)
-        if area_code:
-            break
-    if not area_code:
-        return None
-    station = _AREACODE_TO_STATION.get(area_code)
-    if not station:
-        return None
-    lat, lon = station.get("lat"), station.get("lon")
-    if lat is not None and lon is not None:
-        return [lon, lat]
-    return None
-
 
 async def get_city_by_ip() -> str:
     """通过 IP 自动定位当前所在城市 (保底获取)"""
@@ -78,53 +39,26 @@ async def get_city_by_ip() -> str:
                 city = data.get("city", "")
                 if city:
                     clean_city = city.strip()
-                    if not clean_city.endswith("市") and not clean_city.endswith("县"):
-                        clean_city += "市"
                     logger.info(f"[IP Location] 成功自动识别当前 IP 所在城市: {clean_city}")
                     return clean_city
     except Exception as e:
-        logger.warning(f"[IP Location] 通过 IP 自动获取城市失败，使用保底城市: {e}")
+        logger.warning(f"[IP Location] 通过 IP 自动获取城市失败: {e}")
     return "北京市"
 
-def clean_echo_text(text: str, last_ai_summary: str) -> str:
-    """Clean user input by removing overlap with the last AI summary text to avoid echo."""
-    if last_ai_summary and len(text) > 5:
-        if last_ai_summary in text:
-            return text.replace(last_ai_summary, "").strip()
-        for i in range(min(len(text), 15), 2, -1):
-            if last_ai_summary.endswith(text[:i]):
-                return text[i:].strip()
-    return text
 
 async def fetch_default_city() -> str:
-    """Fetch default city from local configuration (configs/global.json) or external IP geolocation service."""
-    # 1. 优先读取配置文件 (configs/global.json) 中的 default_city
+    """获取项目默认城市：优先从 configs/global.json 中获取，若无则尝试 IP 自动定位"""
     try:
         cfg = load_config()
         city = cfg.get("default_city")
-        if city:
-            return city
+        if city and city.strip():
+            return city.strip()
     except Exception:
         pass
+    return await get_city_by_ip()
 
-    # 2. 回退通过 IP 自动定位当前城市
-    try:
-        async with httpx.AsyncClient() as client:
-            resp = await client.get("http://ip-api.com/json/?lang=zh-CN", timeout=5.0)
-            data = resp.json()
-            if data.get("status") == "success":
-                city = data.get("city", "")
-                if city:
-                    if city.endswith("市"):
-                        city = city[:-1]
-                    return city
-    except Exception:
-        pass
 
-    # 3. 终极兜底保底返回
-    return FALLBACK_DEFAULT_CITY
-
-def resolve_model_path(model_dir: str) -> Path:
+def _resolve_model_path(model_dir: str) -> Path:
     """Resolve model_dir to absolute Path using multiple base directories."""
     path = Path(model_dir)
     if path.is_absolute():
@@ -141,7 +75,7 @@ def resolve_model_path(model_dir: str) -> Path:
 def read_wake_word_from_model(model_dir: str) -> str:
     """Read all wake words from keywords.txt inside model_dir."""
     try:
-        resolved_path = resolve_model_path(model_dir)
+        resolved_path = _resolve_model_path(model_dir)
         keywords_path = resolved_path / "keywords.txt"
         if keywords_path.exists():
             with open(keywords_path, "r", encoding="utf-8") as f:
@@ -198,7 +132,7 @@ def write_wake_word_to_model(model_dir: str, wake_word: str):
         pinyin_str = " ".join(parts)
         output_lines.append(f"{pinyin_str} @{word}")
         
-    resolved_path = resolve_model_path(model_dir)
+    resolved_path = _resolve_model_path(model_dir)
     resolved_path.mkdir(parents=True, exist_ok=True)
     keywords_path = resolved_path / "keywords.txt"
     
@@ -361,14 +295,17 @@ def load_config() -> dict:
                     data = json.load(f)
                     if "current_voice" in data:
                         global_config["voice"] = data["current_voice"]
-                    for k in ["voice_speed", "temperature", "max_tokens", "vad_silence_duration_ms", "silence_duration_ms", "qwen_audio_turn_mode", "qwen_audio_vad_threshold", "qwen_audio_voiceprint_mode", "selected_voiceprint_id", "qwen_audio_voiceprint_audio_urls", "qwen_audio_max_history_turns"]:
+                    for k in ["voice_speed", "temperature", "max_tokens", "vad_silence_duration_ms", "silence_duration_ms", "vad_threshold", "qwen_audio_vad_threshold", "qwen_audio_turn_mode", "qwen_audio_voiceprint_mode", "selected_voiceprint_id", "qwen_audio_voiceprint_audio_urls", "qwen_audio_max_history_turns"]:
                         if k in data:
                             if k == "temperature":
                                 global_config["e2e_temperature"] = data[k]
                             elif k == "max_tokens":
                                 global_config["e2e_max_tokens"] = data[k]
                             elif k in ("vad_silence_duration_ms", "silence_duration_ms"):
+                                global_config["vad_silence_duration_ms"] = data[k]
                                 global_config["e2e_silence_duration_ms"] = data[k]
+                            elif k in ("vad_threshold", "qwen_audio_vad_threshold"):
+                                global_config["vad_threshold"] = data[k]
                             else:
                                 global_config[k] = data[k]
 
@@ -413,6 +350,9 @@ def load_config() -> dict:
         global_config["wake_word"] = read_wake_word_from_model(sherpa_dir)
 
     return global_config
+
+# 别名兼容：load_global_config 指向 load_config
+load_global_config = load_config
 
 def save_config_split(new_config: dict) -> dict:
     """
@@ -678,16 +618,6 @@ def get_tool_calling_mode(channel: str, model_name: str) -> str:
         return mode
     return "serial"  # Default fallback is serial
 
-def get_tool_calling_style(model_name: str) -> str:
-    """
-    Determine the tool calling style (native or router) based on config.
-    model_name: Name of the LLM model (kept for signature compatibility)
-    """
-    config = load_config()
-    style = config.get("text_model_tool_style")
-    if style in ["native", "router"]:
-        return style
-    return "native"  # Default fallback is native
 
 def normalize_tool_name(name: str) -> str:
     """Correct and normalize common tool name variations output by LLM."""

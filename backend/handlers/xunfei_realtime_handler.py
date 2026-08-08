@@ -14,6 +14,15 @@ from fastapi import WebSocket, WebSocketDisconnect
 
 logger = logging.getLogger("xiaoan.xunfei_realtime")
 from utils import is_exit_intent
+from handlers.openai_chat_handler import OpenAIChatHandler
+
+_chat_handler = None
+
+def get_shared_chat_handler() -> OpenAIChatHandler:
+    global _chat_handler
+    if _chat_handler is None:
+        _chat_handler = OpenAIChatHandler()
+    return _chat_handler
 
 
 class XunfeiResultParser:
@@ -160,7 +169,6 @@ class XunfeiASRClient:
                 try:
                     await self.ws.send(json.dumps(frame))
                 except Exception:
-                    # 发生异常通常代表上一轮连接在云端已经被自动结算断开了，这里尝试重新连接首帧发送
                     await self.connect_and_send_first(pcm_data)
 
     async def finish(self):
@@ -223,14 +231,10 @@ async def synthesize_text_stream(
 ):
     """
     流式向科大讯飞发送文本进行语音合成。
-    优先采用天花板级“超拟人合成大模型 Spark-TTS”（使用聆小玥/聆飞逸），
-    若鉴权失败或无权限（11200）则自动无缝降级回退到“通用流式 TTS”（使用叶子/春天明星拟真音色）以保证交互可用性。
     """
-    # 步骤 1：判定当前是否尝试使用高级超拟人 Spark-TTS 接口 (x5_ 或 x6_ 系列发音人)
     use_spark_tts = vcn.startswith("x5_") or vcn.startswith("x6_")
     
     if use_spark_tts:
-        # 高级超拟人 Spark-TTS（在线合成超拟人版）WebSocket 接口地址与请求构造
         url = assemble_auth_url("wss://cbm01.cn-huabei-1.xf-yun.com/v1/private/mcd9m97e6", api_key, api_secret)
         text_b64 = base64.b64encode(text.encode("utf-8")).decode("utf-8")
         
@@ -244,7 +248,7 @@ async def synthesize_text_stream(
                     "oral_level": "mid"
                 },
                 "tts": {
-                    "vcn": vcn, # 直接传入如 x6_lingxiaoyue_pro 这样在控制台已授权的发音人代码
+                    "vcn": vcn,
                     "speed": speed,
                     "volume": 60,
                     "pitch": 50,
@@ -272,11 +276,7 @@ async def synthesize_text_stream(
         try:
             async with websockets.connect(url) as ws:
                 await ws.send(json.dumps(request_data))
-                
-                # 发送当前播放的字幕信息给前端
                 await websocket.send_json({"type": "output_transcript", "data": text})
-                
-                # 同时通知前端大屏进入 TTS 状态
                 await websocket.send_json({
                     "type": "debug_event",
                     "step": "tts",
@@ -294,8 +294,7 @@ async def synthesize_text_stream(
                         code = resp.get("header", {}).get("code", 0)
                     
                     if code == 11200:
-                        logger.warn(f"[Xunfei-TTS] 检测到 APPID={app_id} 尚未在科大讯飞控制台开通高级“超拟人语音合成 (Spark-TTS)”服务。将自动为您降级为通用 TTS 口语化明星音色...")
-                        # 广播通知前端当前音色处于降级模式，建议开通高级权限
+                        logger.warn(f"[Xunfei-TTS] 检测到 APPID={app_id} 尚未开通高级 Spark-TTS。降级为通用音色...")
                         await websocket.send_json({
                             "type": "debug_event",
                             "step": "tts",
@@ -322,14 +321,12 @@ async def synthesize_text_stream(
                         break
                 
                 if auth_ok:
-                    return # 成功通过高级超拟人合成播放，直接退出
+                    return
                     
         except Exception as e:
-            logger.warn(f"[Xunfei-TTS] 尝试使用高级 Spark-TTS 异常: {e}，将自动切换到通用 TTS 兜底")
+            logger.warn(f"[Xunfei-TTS] 尝试 Spark-TTS 异常: {e}，自动切换到通用 TTS 兜底")
 
-    # 步骤 2：降级回退到通用流式 TTS 接口
     fallback_vcn = vcn
-    # 将无法授权的 x6_ 或 x5_ 顶级超拟人音色映射为有权限的普通超拟人明星音色
     if "xiaoyue" in vcn or "xiaoxuan" in vcn:
         fallback_vcn = "x4_yezi_oral"
     elif "feiyi" in vcn or "feizhe" in vcn:
@@ -360,8 +357,6 @@ async def synthesize_text_stream(
     try:
         async with websockets.connect(url) as ws:
             await ws.send(json.dumps(request_data))
-            
-            # 发送当前播放的字幕与状态（如果刚才第一步没有发送成功的话）
             await websocket.send_json({"type": "output_transcript", "data": text})
             await websocket.send_json({
                 "type": "debug_event",
@@ -387,14 +382,14 @@ async def synthesize_text_stream(
                         break
                 else:
                     msg = resp.get("message") or resp.get("header", {}).get("message", "")
-                    logger.error(f"[Xunfei-TTS] 伪装超拟人合成报错 code={code}: {msg}")
+                    logger.error(f"[Xunfei-TTS] 合成报错 code={code}: {msg}")
                     try:
                         await websocket.send_json({"type": "error", "message": f"[Xunfei-TTS] 报错 code={code}: {msg}"})
                     except Exception:
                         pass
                     break
     except Exception as e:
-        logger.error(f"[Xunfei-TTS] 伪装级联合成通信发生异常: {e}")
+        logger.error(f"[Xunfei-TTS] 合成通信故障: {e}")
         try:
             await websocket.send_json({"type": "error", "message": f"[Xunfei-TTS] 异常: {e}"})
         except Exception:
@@ -405,8 +400,7 @@ async def handle_xunfei_realtime_session(
     websocket: WebSocket,
     voice: str,
     config: dict,
-    run_chat_workflow_fn,
-    visual_broadcast_manager
+    visual_broadcast_manager: Any
 ):
     """
     接管科大讯飞流式全双工中介会长连接的主循环
@@ -414,6 +408,7 @@ async def handle_xunfei_realtime_session(
     app_id = os.getenv("XUNFEI_APPID")
     api_key = os.getenv("XUNFEI_API_KEY")
     api_secret = os.getenv("XUNFEI_API_SECRET")
+    default_city = config.get("default_city", "")
     
     if not app_id or not api_key or not api_secret:
         logger.error("[Xunfei-Voice] 缺少科大讯飞的环境变量 XUNFEI_APPID, XUNFEI_API_KEY, XUNFEI_API_SECRET")
@@ -424,24 +419,18 @@ async def handle_xunfei_realtime_session(
     print(f"\n\033[95m[Xunfei-Voice] ===== 科大讯飞流式级联会话已开启 =====\033[0m")
     print(f"\033[95m[Xunfei-Voice] 发音人: {voice}, 设定语速: {voice_speed}\033[0m")
 
-    # 会话核心变量
     session_active = True
     chat_history = []
-    
-    # 打断与控制
     current_cancel_event = asyncio.Event()
     tts_playing = False
 
-    # 初始化 ASR 客户端
     asr_client = XunfeiASRClient(app_id, api_key, api_secret)
 
-    # 1. 当 ASR 识别到临时文字时，如果 AI 正在说话，判定用户进行“抢话打断”
     async def on_asr_text(text: str):
         nonlocal tts_playing
         if text.strip() and tts_playing:
-            logger.info(f"[Xunfei-ASR] 检测到用户抢话(文字: '{text}')，立即打断并静音上一次播放！")
+            logger.info(f"[Xunfei-ASR] 检测到用户抢话(文字: '{text}')，立即打断！")
             current_cancel_event.set()
-            # 广播打断消息通知前端清空缓冲区
             await websocket.send_json({"type": "interrupt"})
 
     async def on_asr_final(final_text: str):
@@ -451,9 +440,8 @@ async def handle_xunfei_realtime_session(
             
         logger.info(f"[Xunfei-ASR] 本轮识别最终文本: '{final_text}'")
 
-        # 优化退出指令识别，使用统一严谨的意图判断
         if is_exit_intent(final_text):
-            logger.info(f"[Xunfei-ASR] 检测到退出指令 '{final_text}'，执行快速挂断")
+            logger.info(f"[Xunfei-ASR] 检测到退出指令 '{final_text}'，挂断")
             await websocket.send_json({"type": "hangup"})
             await visual_broadcast_manager.broadcast({"type": "interrupted"})
             await visual_broadcast_manager.broadcast({"type": "state_change", "state": "idle"})
@@ -461,86 +449,54 @@ async def handle_xunfei_realtime_session(
             session_active = False
             return
             
-        # 强制将上一轮取消（以防万一）
         current_cancel_event.set()
-        
-        # 重建取消信号
         current_cancel_event = asyncio.Event()
-        
-        # 启动异步处理大模型和 TTS 语音合成
         asyncio.create_task(process_brain_and_tts(final_text, current_cancel_event))
 
     asr_client.on_text_callback = on_asr_text
     asr_client.on_final_text_callback = on_asr_final
 
-    # 大大脑和 TTS 合成循环
     async def process_brain_and_tts(final_text: str, cancel_event: asyncio.Event):
         nonlocal tts_playing
         tts_playing = True
         
         try:
-            # 2.1 模拟将 ASR 结果发送给前端展现 STT
             await websocket.send_json({
                 "type": "debug_event",
                 "step": "stt",
                 "content": final_text
             })
             
-            # 记录历史
             chat_history.append({"role": "user", "content": final_text})
-            
-            # 分句合成的文本缓存
             sentence_buffer = ""
             ai_reply_text = ""
             punctuations = {"。", "？", "！", "；", ".", "?", "!", ";", "\n"}
+            chat_handler = get_shared_chat_handler()
             
-            # 流式启动大模型决策生成
-            async for line in run_chat_workflow_fn(final_text, chat_history):
+            async for token in chat_handler.stream_project_text_chat(message=final_text, history=chat_history, city=default_city):
                 if cancel_event.is_set():
-                    logger.info("[Xunfei-Brain] 收到取消信号，中止大语言脑流式吐字")
+                    logger.info("[Xunfei-Brain] 收到取消信号，中止大流式吐字")
                     break
                     
-                if not line.startswith("data: "):
-                    continue
-                try:
-                    payload = json.loads(line.replace("data: ", "").strip())
-                    
-                    # 2.2 转发大模型脑的所有调试事件（包括 "intent" 语义意图分析事件！）
-                    # 这能令大屏幕完美自动弹出“语义分析决定调用工具：...”调试框及对应的图层看板
-                    if payload.get("type") == "debug_event":
-                        await websocket.send_json(payload)
-                        continue
-                    elif payload.get("type") == "error":
-                        logger.error(f"[Xunfei-Brain] 收到大模型脑子抛出错误: {payload.get('message')}")
-                        await websocket.send_json(payload)
-                        continue
-                        
-                    # 2.3 累积输出回答内容用于 TTS 分句流式合成
-                    if payload.get("type") == "delta":
-                        delta = payload.get("content", "")
-                        sentence_buffer += delta
-                        ai_reply_text += delta
-                        await websocket.send_json({"type": "output_transcript", "data": ai_reply_text})
-                        
-                        # 检查句段分割
-                        if delta in punctuations or any(sentence_buffer.endswith(p) for p in punctuations):
-                            clean_sentence = sentence_buffer.strip()
-                            if clean_sentence:
-                                await synthesize_text_stream(
-                                    text=clean_sentence,
-                                    vcn=voice,
-                                    app_id=app_id,
-                                    api_key=api_key,
-                                    api_secret=api_secret,
-                                    websocket=websocket,
-                                    cancel_event=cancel_event,
-                                    speed=voice_speed
-                                )
-                            sentence_buffer = ""
-                except Exception as e:
-                    logger.warn(f"[Xunfei-Brain] 解析流式响应帧失败: {e}")
+                sentence_buffer += token
+                ai_reply_text += token
+                await websocket.send_json({"type": "output_transcript", "data": ai_reply_text})
+                
+                if any(p in sentence_buffer for p in punctuations):
+                    clean_sentence = sentence_buffer.strip()
+                    if clean_sentence:
+                        await synthesize_text_stream(
+                            text=clean_sentence,
+                            vcn=voice,
+                            app_id=app_id,
+                            api_key=api_key,
+                            api_secret=api_secret,
+                            websocket=websocket,
+                            cancel_event=cancel_event,
+                            speed=voice_speed
+                        )
+                    sentence_buffer = ""
             
-            # 处理最后残留文本
             if not cancel_event.is_set() and sentence_buffer.strip():
                 await synthesize_text_stream(
                     text=sentence_buffer.strip(),
@@ -555,10 +511,9 @@ async def handle_xunfei_realtime_session(
             if not cancel_event.is_set():
                 await websocket.send_json({"type": "output_transcript_done"})
         except (WebSocketDisconnect, RuntimeError) as e:
-            # 捕获断开连接和 ASGI send 异常并安全退避，不在控制台抛出 Traceback
-            logger.info(f"[Xunfei-Brain] 会话应答中途连接已断开，大脑及 TTS 任务安全终止: {e}")
+            logger.info(f"[Xunfei-Brain] 会话应答中途连接切断: {e}")
         except Exception as e:
-            logger.error(f"[Xunfei-Brain] 决策大模型脑流程执行故障: {e}")
+            logger.error(f"[Xunfei-Brain] 决策大模型执行故障: {e}")
             try:
                 await websocket.send_json({"type": "error", "message": f"[Xunfei-Brain] 故障: {e}"})
             except Exception:
@@ -566,7 +521,6 @@ async def handle_xunfei_realtime_session(
         finally:
             tts_playing = False
 
-    # 3. 实时从前端读取二进制麦克风流并喂送给 ASR 流进行识别
     try:
         while session_active:
             message = await websocket.receive()
@@ -580,27 +534,27 @@ async def handle_xunfei_realtime_session(
                 try:
                     payload = json.loads(text_msg)
                     if payload.get("type") == "interrupt":
-                        logger.info("⚡ [Xunfei-Voice] 收到前端打断指令，立即切断 TTS 播放并复位为倾听")
+                        logger.info("⚡ [Xunfei-Voice] 收到前端打断指令")
                         current_cancel_event.set()
                         await visual_broadcast_manager.broadcast({"type": "state_change", "state": "listening"})
                         await websocket.send_json({"type": "state_change", "state": "listening"})
                         await websocket.send_json({"type": "interrupt"})
                     elif payload.get("type") == "hangup":
-                        logger.info("[Xunfei-Voice] 前端收到挂断请求")
+                        logger.info("[Xunfei-Voice] 前端挂断请求")
                         break
                     elif payload.get("type") == "query" or payload.get("type") == "text_query":
                         text_content = payload.get("text", "")
                         if text_content:
-                            logger.info(f"[Xunfei-Voice] 收到文本命令测试: {text_content}")
+                            logger.info(f"[Xunfei-Voice] 收到文本测试命令: {text_content}")
                             await on_asr_final(text_content)
                 except Exception:
                     pass
     except WebSocketDisconnect:
         logger.info("[Xunfei-Voice] WebSocket 被前端断开")
     except Exception as e:
-        logger.error(f"[Xunfei-Voice] 语音会话发生未知异常: {e}")
+        logger.error(f"[Xunfei-Voice] 语音会话未知异常: {e}")
     finally:
         session_active = False
         current_cancel_event.set()
         await asr_client.finish()
-        logger.info("[Xunfei-Voice] ===== 科大讯飞语音会话管道已关闭回收 =====")
+        logger.info("[VoiceEngine] ===== 语音会话管道已关闭回收 =====")

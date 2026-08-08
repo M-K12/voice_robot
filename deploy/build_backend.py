@@ -1,0 +1,187 @@
+"""
+================================================================================
+后端 FastAPI 服务【沙盒模式 (Staging Build)】专属一键打包脚本
+优势:
+  1. 零原源码污染: 原始源码目录完全只读，只在临时沙盒 staging_backend 中编译打包
+  2. 源码物理隔离: 沙盒内自动抹除 .py 源码 (保留 main.py)，强迫 PyInstaller 只依赖二进制 .so / .pyd 库
+  3. 绝对零残留: 打包完成后整盘销毁沙盒，源码目录绝不会留下任何 .so / .pyd / .c 垃圾
+用法:
+  python deploy/build_backend.py
+================================================================================
+"""
+
+import os
+import sys
+import shutil
+import subprocess
+import ast
+
+script_dir = os.path.dirname(os.path.abspath(__file__))
+project_root = os.path.dirname(script_dir)
+os.chdir(project_root)
+
+staging_dir = os.path.join(script_dir, "staging_backend")
+backend_staging = os.path.join(staging_dir, "backend")
+
+
+def run_command(cmd, cwd=project_root):
+    print(f"👉 运行指令: {cmd}")
+    res = subprocess.run(cmd, shell=True, cwd=cwd)
+    if res.returncode != 0:
+        raise RuntimeError(f"指令执行失败 (exit code: {res.returncode}): {cmd}")
+
+
+def clean_staging():
+    """彻底销毁临时构建沙盒"""
+    if os.path.exists(staging_dir):
+        try:
+            shutil.rmtree(staging_dir, ignore_errors=True)
+            print("🧹 [沙盒销毁] 已彻底清空删除临时构建沙盒 directory")
+        except Exception as e:
+            print(f"⚠️ 清理沙盒目录提示: {e}")
+
+
+def extract_third_party_imports(src_dir):
+    """在擦除源码前，通过 AST 语法树解析源码中实际调用的第三方库 (跳过 Python 标准库及项目内模块)"""
+    stdlib = sys.stdlib_module_names if hasattr(sys, "stdlib_module_names") else set()
+    local_dirs = {d for d in os.listdir(src_dir) if os.path.isdir(os.path.join(src_dir, d))}
+    
+    imports = set()
+    for dirpath, _, filenames in os.walk(src_dir):
+        for fn in filenames:
+            if fn.endswith(".py"):
+                filepath = os.path.join(dirpath, fn)
+                try:
+                    with open(filepath, "r", encoding="utf-8", errors="ignore") as f:
+                        tree = ast.parse(f.read(), filename=filepath)
+                    for node in ast.walk(tree):
+                        if isinstance(node, ast.Import):
+                            for alias in node.names:
+                                top_name = alias.name.split(".")[0]
+                                if top_name and top_name not in stdlib and top_name not in local_dirs and top_name not in ["backend", "pyside_app", "main"]:
+                                    imports.add(top_name)
+                        elif isinstance(node, ast.ImportFrom):
+                            if node.module:
+                                top_name = node.module.split(".")[0]
+                                if top_name and top_name not in stdlib and top_name not in local_dirs and top_name not in ["backend", "pyside_app", "main"]:
+                                    imports.add(top_name)
+                except Exception:
+                    pass
+    return imports
+
+
+def main():
+    print("=" * 66)
+    print(" 🛠️ Voice Robot 后端专属打包系统 [Staging 独立沙盒构建模式]")
+    print("=" * 66)
+
+    py_exec = sys.executable
+
+    try:
+        # 1. 准备干净的构建沙盒
+        clean_staging()
+        os.makedirs(staging_dir, exist_ok=True)
+
+        print("\n【步骤 1/4】复制后端源码至临时沙盒区 (原源码目录保持只读)...")
+        src_backend = os.path.join(project_root, "backend")
+        shutil.copytree(src_backend, backend_staging)
+        print("  ✅ 源代码已镜像克隆至沙盒工作区")
+
+        # 💡 在擦除源码之前，先利用 AST 解析提取源码中引用的所有第三方依赖
+        third_party_deps = extract_third_party_imports(backend_staging)
+        print(f"  🔍 从源码精准分析提取到 {len(third_party_deps)} 个第三方依赖: {sorted(list(third_party_deps))}")
+
+        # 2. 在沙盒内执行 Cython 编译
+        print("\n【步骤 2/4】在沙盒区编译所有 Python 模块为二进制扩展 (.so/.pyd)...")
+        compile_script = os.path.join(script_dir, "compile_so.py")
+        run_command(f'"{py_exec}" "{compile_script}" "{backend_staging}"', cwd=staging_dir)
+
+        # 3. 在沙盒区内删除 .py 源码以进行打包防护 (除 main.py 入口及 __init__.py 包声明)
+        print("\n【步骤 3/4】在沙盒区内清除 .py 源码，防止源码打入产物包...")
+        py_deleted_count = 0
+        for dirpath, _, filenames in os.walk(backend_staging):
+            for fn in filenames:
+                if fn.endswith(".py") and fn not in ["main.py", "__init__.py"]:
+                    p_file = os.path.join(dirpath, fn)
+                    try:
+                        os.remove(p_file)
+                        py_deleted_count += 1
+                    except Exception:
+                        pass
+        print(f"  🔒 沙盒内已防护清理 {py_deleted_count} 个 .py 源码文件 (仅保留 main.py 与包标识 __init__.py)")
+
+        # 4. 调用 PyInstaller 对沙盒进行打包
+        print("\n【步骤 4/4】PyInstaller 读取沙盒二进制扩展，导出终极程序包...")
+        dist_backend = os.path.join(project_root, "dist", "backend")
+        build_backend = os.path.join(project_root, "build", "backend")
+        os.makedirs(dist_backend, exist_ok=True)
+
+        backend_main = os.path.join(backend_staging, "main.py")
+
+        # 自动获取沙盒内编译生成的所有 Cython 二进制模块，强行收集为 hidden-import
+        hidden_imports = list(third_party_deps)
+        for dirpath, _, filenames in os.walk(backend_staging):
+            for fn in filenames:
+                if fn.endswith(".so") or fn.endswith(".pyd"):
+                    rel_path = os.path.relpath(os.path.join(dirpath, fn), backend_staging)
+                    mod_part = rel_path.split(".")[0]
+                    mod_name = mod_part.replace(os.sep, "/").replace("/", ".")
+                    if mod_name and not mod_name.endswith("__init__"):
+                        hidden_imports.append(mod_name)
+                    parts = mod_name.split(".")
+                    for i in range(1, len(parts)):
+                        hidden_imports.append(".".join(parts[:i]))
+
+        hidden_args = " ".join([f'--hidden-import="{m}"' for m in set(hidden_imports)])
+        print(f"  🔍 汇总生成 {len(set(hidden_imports))} 个轻量隐式导入模块指示")
+
+        datas = [
+            (os.path.join(project_root, ".env"), "."),
+            (os.path.join(src_backend, "assets"), "assets"),
+            (os.path.join(src_backend, "static"), "static"),
+            (os.path.join(project_root, "configs"), "configs"),
+        ]
+        
+        data_args = " ".join([f'--add-data "{src};{dst}"' if sys.platform == "win32" else f'--add-data "{src}:{dst}"' for src, dst in datas if os.path.exists(src)])
+
+        # 智能检测 PyInstaller 命令或通过 uv 补全
+        has_uv = shutil.which("uv") is not None
+        pyinstaller_prefix = f'"{py_exec}" -m PyInstaller'
+        
+        try:
+            res = subprocess.run([py_exec, "-m", "PyInstaller", "--version"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            if res.returncode != 0 and has_uv:
+                pyinstaller_prefix = "uv run --with pyinstaller python -m PyInstaller"
+        except Exception:
+            if has_uv:
+                pyinstaller_prefix = "uv run --with pyinstaller python -m PyInstaller"
+
+        cmd = (
+            f'{pyinstaller_prefix} '
+            f'--name="xiaoan_backend" '
+            f'--onedir --noconfirm --clean '
+            f'--distpath="{dist_backend}" '
+            f'--workpath="{build_backend}" '
+            f'--paths="{backend_staging}" '
+            f'--paths="{staging_dir}" '
+            f'{hidden_args} '
+            f'{data_args} '
+            f'"{backend_main}"'
+        )
+        run_command(cmd, cwd=staging_dir)
+
+        print("\n" + "=" * 66)
+        print("🎉🎉 后端打包 100% 成功！")
+        print(f" 📦 产物输出路径: {os.path.join(dist_backend, 'xiaoan_backend')}")
+        print("=" * 66)
+
+    except Exception as e:
+        print(f"\n❌ 后端打包构建失败: {e}")
+        sys.exit(1)
+    finally:
+        # 5. 无论成功还是失败，无条件彻底销毁沙盒
+        clean_staging()
+
+
+if __name__ == "__main__":
+    main()

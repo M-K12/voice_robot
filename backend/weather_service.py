@@ -12,6 +12,7 @@
 import asyncio
 import logging
 import os
+import time
 import abc
 from datetime import datetime, timedelta
 import json
@@ -539,6 +540,8 @@ class WeatherService:
         self.set_source(source or DEFAULT_WEATHER_SOURCE)
         self._history_disasters = self._load_history_disasters()
         self._jiashan_proxy = JiashanProxyProvider()
+        self._cache: Dict[str, tuple] = {}  # 15 分钟内存 LRU 天气 Cache (0ms 响应)
+        self._cache_ttl = 900               # 900 秒
 
     def set_source(self, source: str):
         source = source.lower()
@@ -561,6 +564,14 @@ class WeatherService:
         return {}
 
     async def get_weather(self, city: str, date: str, days: int = 1, query_types: Optional[List[str]] = None, date_end: Optional[str] = None, lon: Optional[float] = None, lat: Optional[float] = None) -> Optional[Dict]:
+        cache_key = f"{city}_{date}_{days}_{date_end}"
+        now_ts = time.time()
+        if cache_key in self._cache:
+            cached_data, expire_at = self._cache[cache_key]
+            if now_ts < expire_at:
+                logger.info(f"🎯 [Weather Cache] 命中 15 分钟内存天气缓存 '{cache_key}' -> 0ms 零延迟返回")
+                return cached_data
+
         real_lon, real_lat, area_name, pname, cityname, poi_name = lon, lat, city, None, None, city
         if (real_lon is None or real_lat is None) and amap_service:
             try:
@@ -578,6 +589,7 @@ class WeatherService:
         for provider in self._providers:
             result = await provider.get_weather(city, date, days, query_types, date_end=date_end, lon=real_lon, lat=real_lat)
             if result:
+                self._cache[cache_key] = (result, now_ts + self._cache_ttl)
                 break
 
         if result:

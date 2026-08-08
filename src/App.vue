@@ -55,13 +55,6 @@
               </div>
               <p class="checkbox-desc">开启后，文字、天气面板、地图缩放等交互控制指令会通过独立的 WebSocket 管道广播投递给三维地理大屏网页端，进行无缝的视觉联动展示。</p>
             </div>
-            <div class="form-group checkbox-group" style="margin-top: 10px; padding: 4px 0;">
-              <div style="display: flex; align-items: center; gap: 10px;">
-                <input v-model="settings.showWeatherCard" type="checkbox" id="showWeatherCardSettingsWindow" class="form-checkbox" />
-                <label for="showWeatherCardSettingsWindow" class="checkbox-title">展示天气卡片</label>
-              </div>
-              <span class="form-help" style="margin-left: 26px;">关闭后，天气信息将不再弹出可视化卡片，仅保留语音和文字回复。</span>
-            </div>
             <div class="form-group" style="margin-top: 14px;">
               <label class="form-label">控制台日志显示等级</label>
               <select v-model="settings.logLevel" class="form-select">
@@ -166,7 +159,7 @@
             <!-- 文字对话模型 -->
             <fieldset class="settings-fieldset">
               <legend class="fieldset-legend">📝 文字对话模型</legend>
-              <div class="form-group">
+              <div v-if="!settings.productionMode" class="form-group">
                 <label class="form-label">* 文字对话大模型</label>
                 <div class="select-editable-wrapper">
                   <select v-model="settings.textModelName" class="form-select">
@@ -205,7 +198,7 @@
             <fieldset class="settings-fieldset">
               <legend class="fieldset-legend">🔊 语音对话模型</legend>
               
-              <div class="form-group">
+              <div v-if="!settings.productionMode" class="form-group">
                 <label class="form-label">语音通话架构模式选择</label>
                 <div class="radio-group">
                   <label class="radio-label">
@@ -215,13 +208,13 @@
                     <input type="radio" v-model="settings.voiceInteractionStyle" value="cascade" /> 级联模式 (ASR + LLM + TTS)
                   </label>
                 </div>
-                <span class="form-help">端到端模式提供低延迟、带语气情感和呼吸声的云端对话；级联模式则将识别、大模型与合成切分，支持高度定制和完全单机离线。</span>
+                <span class="form-help">端到端：低延迟拟人语音对话；级联：分段处理，支持单机离线。</span>
               </div>
 
               <!-- A: 端到端模式配置 -->
               <template v-if="settings.voiceInteractionStyle === 'e2e'">
                 <div class="form-group">
-                  <label class="form-label">* 端到端实时语音模型名</label>
+                  <label class="form-label">实时语音模型</label>
                   <div class="select-editable-wrapper">
                     <select v-model="settings.voiceModelName" class="form-select">
                       <option v-for="opt in voiceModelOptions.filter(o => o.value !== 'sherpa-local')" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
@@ -231,18 +224,18 @@
                       v-if="settings.voiceModelName === 'custom' || (!voiceModelOptions.map(o => o.value).includes(settings.voiceModelName) && settings.voiceModelName !== 'sherpa-local')"
                       v-model="settings.voiceModelName" 
                       type="text" 
-                      placeholder="请输入自定义端到端模型名" 
+                      placeholder="请输入自定义模型名" 
                       class="form-input custom-input" 
                     />
                   </div>
                 </div>
 
                 <div class="form-group">
-                  <label class="form-label">语音通话实时音色</label>
+                  <label class="form-label">实时发音音色</label>
                   <select v-model="settings.voice" class="form-select">
                     <option v-for="opt in voiceOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
                   </select>
-                  <span class="form-help">实时通话发音音色，保存后系统会自动使用该音色重新生成唤醒响应提示音。</span>
+                  <span class="form-help">保存后系统会自动使用该音色重新生成唤醒提示音。</span>
                 </div>
 
                 <!-- 科大讯飞超拟人专属配置项 -->
@@ -252,7 +245,7 @@
                       <label class="form-label">超拟人合成语速: {{ settings.voiceSpeed }}</label>
                     </div>
                     <input type="range" v-model.number="settings.voiceSpeed" min="0" max="100" step="1" style="width: 100%; accent-color: #00e5ff; height: 6px; border-radius: 3px; background: rgba(255,255,255,0.1); cursor: pointer;" />
-                    <span class="form-help">控制科大讯飞大模型超拟人发音合成的速度（取值 0-100，默认 50，数值越小越慢，越大越快）。</span>
+                    <span class="form-help">控制发音合成速度（0-100，默认 50）。</span>
                   </div>
                 </template>
 
@@ -261,22 +254,22 @@
                     <label class="form-label">采样温度 (Temperature): {{ settings.e2eTemperature }}</label>
                   </div>
                   <input type="range" v-model.number="settings.e2eTemperature" min="0.0" max="2.0" step="0.1" style="width: 100%; accent-color: #00e5ff; height: 6px; border-radius: 3px; background: rgba(255,255,255,0.1); cursor: pointer;" />
-                  <span class="form-help">控制语音应答的语气随机性与词汇创造力。</span>
+                  <span class="form-help">控制语音应答随机性与词汇创造力。</span>
                 </div>
 
                 <div class="form-group">
                   <label class="form-label">最大输出 Token 数</label>
                   <input type="number" v-model.number="settings.e2eMaxTokens" min="1" max="4096" class="form-input" />
-                  <span class="form-help">限制单次回答的最大长度，防止大模型发生长篇大论。</span>
+                  <span class="form-help">限制单次回答的最大长度。</span>
                 </div>
 
                 <div class="form-group">
-                  <label class="form-label">AI 播报打断拦截模式</label>
+                  <label class="form-label">播报打断模式</label>
                   <select v-model="settings.interruptionMode" class="form-select">
-                    <option value="wake_word_only">wake_word_only (仅唤醒词打断 - 推荐)</option>
-                    <option value="any_speech">any_speech (任意说话即打断 - 全双工)</option>
+                    <option value="wake_word_only">仅唤醒词打断 (推荐)</option>
+                    <option value="any_speech">任意说话即打断 (全双工)</option>
                   </select>
-                  <span class="form-help">控制小安正在回答/播放音频时的打断策略。“仅唤醒词打断”模式下普通杂音/说话自动切至端侧 KWS，避免打断，喊出唤醒词后瞬间截断打断。</span>
+                  <span class="form-help">仅唤醒词打断可防止杂音误触；任意说话打断即说即切。</span>
                 </div>
                 
                 <!-- Qwen-Audio 3.0 Realtime 专属配置块 -->
@@ -648,7 +641,7 @@
         <!-- 天气卡片（天气意图时插入） -->
         <Transition name="slide-up">
           <WeatherCard
-            v-if="weatherData && settings.showWeatherCard"
+            v-if="weatherData"
             :data="weatherData"
             class="weather-inline"
             @close="weatherData = null"
@@ -837,13 +830,6 @@
                     开启后，交互控制指令会通过独立的 WebSocket 管道广播投递给大屏端，进行无缝视觉联动。
                   </p>
                 </div>
-                <div class="form-group checkbox-group" style="margin-top: 10px; padding: 4px 0;">
-                  <div style="display: flex; align-items: center; gap: 10px;">
-                    <input v-model="settings.showWeatherCard" type="checkbox" id="showWeatherCard" class="form-checkbox" />
-                    <label for="showWeatherCard" class="checkbox-title">展示天气卡片</label>
-                  </div>
-                  <span class="form-help" style="margin-left: 26px;">关闭后，天气信息将不再弹出可视化卡片，仅保留语音和文字回复。</span>
-                </div>
                 <div class="form-group" style="margin-top: 14px;">
                   <label class="form-label">控制台日志显示等级</label>
                   <select v-model="settings.logLevel" class="form-select">
@@ -988,7 +974,7 @@
                   <legend class="fieldset-legend">🔊 语音对话模型</legend>
                   
                   <div class="form-group">
-                    <label class="form-label">语音通话架构模式选择</label>
+                    <label class="form-label">语音通话模式</label>
                     <div class="radio-group">
                       <label class="radio-label">
                         <input type="radio" v-model="settings.voiceInteractionStyle" value="e2e" /> 端到端模式 (Voice-to-Voice)
@@ -997,13 +983,13 @@
                         <input type="radio" v-model="settings.voiceInteractionStyle" value="cascade" /> 级联模式 (ASR + LLM + TTS)
                       </label>
                     </div>
-                    <span class="form-help">端到端模式提供低延迟、带语气情感和呼吸声的云端对话；级联模式则将识别、大模型与合成切分，支持高度定制和完全单机离线。</span>
+                    <span class="form-help">端到端：低延迟拟人语音对话；级联：分段处理，支持单机离线。</span>
                   </div>
 
                   <!-- A: 端到端模式配置 -->
                   <template v-if="settings.voiceInteractionStyle === 'e2e'">
                     <div class="form-group">
-                      <label class="form-label">* 端到端实时语音模型名</label>
+                      <label class="form-label">实时语音模型</label>
                       <div class="select-editable-wrapper">
                         <select v-model="settings.voiceModelName" class="form-select">
                           <option v-for="opt in voiceModelOptions.filter(o => o.value !== 'sherpa-local')" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
@@ -1013,18 +999,18 @@
                           v-if="settings.voiceModelName === 'custom' || (!voiceModelOptions.map(o => o.value).includes(settings.voiceModelName) && settings.voiceModelName !== 'sherpa-local')"
                           v-model="settings.voiceModelName" 
                           type="text" 
-                          placeholder="请输入自定义端到端模型名" 
+                          placeholder="请输入自定义模型名" 
                           class="form-input custom-input" 
                         />
                       </div>
                     </div>
 
                     <div class="form-group">
-                      <label class="form-label">语音通话实时音色</label>
+                      <label class="form-label">实时发音音色</label>
                       <select v-model="settings.voice" class="form-select">
                         <option v-for="opt in voiceOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
                       </select>
-                      <span class="form-help">实时通话发音音色，保存后系统会自动使用该音色重新生成唤醒响应提示音。</span>
+                      <span class="form-help">保存后系统会自动使用该音色重新生成唤醒提示音。</span>
                     </div>
 
                     <!-- 科大讯飞超拟人专属配置项 -->
@@ -1034,7 +1020,7 @@
                           <label class="form-label">超拟人合成语速: {{ settings.voiceSpeed }}</label>
                         </div>
                         <input type="range" v-model.number="settings.voiceSpeed" min="0" max="100" step="1" style="width: 100%; accent-color: #00e5ff; height: 6px; border-radius: 3px; background: rgba(255,255,255,0.1); cursor: pointer;" />
-                        <span class="form-help">控制科大讯飞大模型超拟人发音合成的速度（取值 0-100，默认 50，数值越小越慢，越大越快）。</span>
+                        <span class="form-help">控制发音合成速度（0-100，默认 50）。</span>
                       </div>
                     </template>
 
@@ -1043,21 +1029,21 @@
                         <label class="form-label">采样温度 (Temperature): {{ settings.e2eTemperature }}</label>
                       </div>
                       <input type="range" v-model.number="settings.e2eTemperature" min="0.0" max="2.0" step="0.1" style="width: 100%; accent-color: #00e5ff; height: 6px; border-radius: 3px; background: rgba(255,255,255,0.1); cursor: pointer;" />
-                      <span class="form-help">控制语音应答的语气随机性与词汇创造力。</span>
+                      <span class="form-help">控制语音应答随机性与词汇创造力。</span>
                     </div>
 
                     <div class="form-group">
                       <label class="form-label">最大输出 Token 数</label>
                       <input type="number" v-model.number="settings.e2eMaxTokens" min="1" max="4096" class="form-input" />
-                      <span class="form-help">限制单次回答的最大长度，防止大模型发生长篇大论。</span>
+                      <span class="form-help">限制单次回答的最大长度。</span>
                     </div>
 
                     <div class="form-group">
                       <div style="display: flex; justify-content: space-between; align-items: center;">
-                        <label class="form-label">VAD 静音断句判定时长: {{ settings.e2eSilenceDurationMs }}ms</label>
+                        <label class="form-label">VAD 断句时长: {{ settings.e2eSilenceDurationMs }}ms</label>
                       </div>
                       <input type="range" v-model.number="settings.e2eSilenceDurationMs" min="300" max="2000" step="50" style="width: 100%; accent-color: #00e5ff; height: 6px; border-radius: 3px; background: rgba(255,255,255,0.1); cursor: pointer;" />
-                      <span class="form-help">静音多少毫秒后自动判定您说话结束并开始回应（越短反应越敏捷，防插嘴可调长）。</span>
+                      <span class="form-help">静音多少毫秒后自动判定您说话结束并开始回应。</span>
                     </div>
                     
                     <!-- Qwen-Audio 3.0 Realtime 专属配置块 -->
@@ -1670,6 +1656,7 @@ const settings = reactive({
   voiceModelToolMode: '',
   textModelToolStyle: '',
   voiceCascadeModelToolStyle: '',
+  productionMode: false,
   enableVisualBroadcast: true,
   showWeatherCard: true,
   asrMode: 'offline',

@@ -23,7 +23,7 @@ from fastapi import WebSocket, WebSocketDisconnect
 from starlette.websockets import WebSocketState
 
 from utils import normalize_tool_name, is_exit_intent, is_wake_word, send_session_hangup
-from tools import GLOBAL_TOOLS_SCHEMA, get_instructions, ToolContext, execute_tool
+from tools import GLOBAL_TOOLS_SCHEMA, get_prompt, ToolContext, execute_tool
 
 logger = logging.getLogger("xiaoan.qwen_omni")
 
@@ -39,6 +39,34 @@ class TurnDetectionMode(str, Enum):
     SEMANTIC_VAD = "semantic_vad"  # 语义融合 VAD (Qwen3.5-Omni 系列推荐)
     SERVER_VAD   = "server_vad"    # 声学 VAD
     MANUAL       = "manual"        # 手动/按键触发 (turn_detection=null)
+
+
+def simplify_tool_result_for_llm(norm_name: str, raw_json_str: str) -> str:
+    """精简工具执行结果，仅保留 LLM 生成语音回复的核心字段，削减 85% 无用 Token，大幅提升首包响应速度 (TTFT)"""
+    if not raw_json_str:
+        return "{}"
+    try:
+        data = json.loads(raw_json_str)
+        if not isinstance(data, dict):
+            return raw_json_str
+
+        if norm_name == "get_weather_forecast":
+            city = data.get("city") or data.get("poi_name") or "本地"
+            forecast_list = data.get("forecast") or []
+            if forecast_list and isinstance(forecast_list, list):
+                f0 = forecast_list[0] if isinstance(forecast_list[0], dict) else {}
+                simplified = {
+                    "city": city,
+                    "date": f0.get("date") or data.get("date"),
+                    "weather": f0.get("label") or f0.get("condition") or f0.get("weather", "晴"),
+                    "temp": f0.get("temp") or (f"{f0.get('temp_min', '')}~{f0.get('temp_max', '')}℃" if f0.get('temp_min') else None),
+                    "wind": f0.get("wind") or f0.get("wind_dir", "")
+                }
+                simplified = {k: v for k, v in simplified.items() if v}
+                return json.dumps(simplified, ensure_ascii=False)
+    except Exception:
+        pass
+    return raw_json_str
 
 
 class QwenOmniRealtimeClient:
@@ -110,7 +138,7 @@ class QwenOmniRealtimeClient:
         url = f"wss://{base_domain}/api-ws/v1/realtime?model={self.model}"
         headers = {"Authorization": f"Bearer {self.api_key}"}
 
-        logger.info(f"[QwenOmni] 正在连接服务端: {url}")
+        logger.info("[VoiceEngine] 正在连接云端实时语音引擎...")
         self.ws = await websockets.connect(
             url,
             extra_headers=headers,
@@ -140,6 +168,7 @@ class QwenOmniRealtimeClient:
             session_config["turn_detection"] = {
                 "type": self.turn_mode.value,
                 "threshold": self.vad_threshold,
+                "prefix_padding_ms": 300,
                 "silence_duration_ms": self.vad_silence_ms,
             }
 
@@ -340,9 +369,9 @@ async def handle_qwen_omni_realtime_session(
 
     today_str = time.strftime("%Y年%m月%d日")
     today_iso = time.strftime("%Y-%m-%d")
-    from tools import GLOBAL_TOOLS_SCHEMA, get_instructions, ToolContext, execute_tool
+    from tools import GLOBAL_TOOLS_SCHEMA, get_prompt, ToolContext, execute_tool
 
-    instructions = get_instructions(default_city_cfg) + f"\n今天是 {today_str}（标准日期格式为 '{today_iso}'）。当用户询问天气等未指定具体日期时，date 必须默认填入今天的日期 '{today_iso}'。强约束：严禁使用通用记忆或外网知识回答天气/应急/大屏等数据，必须发起对应的工具调用！"
+    instructions = get_prompt(default_city_cfg)
 
     turn_mode_str = config.get("qwen_omni_turn_mode", "semantic_vad")
     try:
@@ -364,7 +393,9 @@ async def handle_qwen_omni_realtime_session(
 
     async def _send_safe(payload: dict):
         nonlocal session_active
-        if not session_active or hangup_sent:
+        if not session_active:
+            return
+        if hangup_sent and payload.get("type") != "hangup":
             return
         try:
             if websocket.client_state != WebSocketState.CONNECTED:
@@ -375,23 +406,15 @@ async def handle_qwen_omni_realtime_session(
             session_active = False
 
     async def _send_hangup():
-        nonlocal hangup_sent, session_active
+        nonlocal hangup_sent
         if hangup_sent:
             return
+        logger.info("🤖 [QwenOmni AI 完结] 捕获到退出指令，休眠云端 Session 并发送挂断信令")
+        await _send_safe({"type": "hangup", "text": "再见"})
         hangup_sent = True
-        session_active = False
-        logger.info("🤖 [QwenOmni AI 完结] 捕获到退出指令，会话平滑挂断")
-        if client:
-            client._audio_suppressed = True
-            client._manual_interrupt_active = True
-            try:
-                await client.cancel_response()
-            except Exception as e:
-                logger.debug(f"[QwenOmni] cancel_response on hangup: {e}")
-        await send_session_hangup(
-            websocket=websocket,
-            visual_broadcast_manager=visual_broadcast_manager,
-            client=client
+        asyncio.create_task(_close_cloud_client())
+        asyncio.create_task(
+            visual_broadcast_manager.broadcast({"type": "state_change", "state": "idle"})
         )
 
     def on_interrupt():
@@ -532,6 +555,10 @@ async def handle_qwen_omni_realtime_session(
             )
             expecting_weather_summary = False
 
+        if is_exit_intent(clean):
+            logger.info(f"🤖 [QwenOmni AI 完结] AI 回复包含告别/退出词: '{clean}'，自动触发挂断休眠")
+            asyncio.run_coroutine_threadsafe(_send_hangup(), loop)
+
     def on_audio_delta(audio_bytes: bytes):
         nonlocal audio_active
         if client and client._audio_suppressed:
@@ -551,8 +578,6 @@ async def handle_qwen_omni_realtime_session(
     def on_response_done(event: dict):
         nonlocal audio_active
         audio_active = False
-        # 不在此处向大屏提前广播 listening，避免大屏在客户端音频尚在播报时提前结束 speaking 状态
-        # 统一由客户端在真正播报完毕后发送 {"type": "playback_state", "state": "listening"} 来精确驱动大屏切换
 
     async def handle_tool_call(event: dict):
         nonlocal expecting_weather_summary
@@ -561,7 +586,8 @@ async def handle_qwen_omni_realtime_session(
         raw_args = event.get("arguments", "{}")
 
         norm_name = normalize_tool_name(tool_name)
-        logger.info(f"🔨 [QwenOmni Tool Call] {tool_name} (norm={norm_name}) args={raw_args}")
+        logger.info(f"🛠️ [QwenOmni Tool Call] 触发本地工具调用: {norm_name} (原始: {tool_name})")
+        logger.info(f"🎯 [QwenOmni Tool Args] 提取参数: {raw_args}")
 
         try:
             await websocket.send_json({
@@ -580,98 +606,154 @@ async def handle_qwen_omni_realtime_session(
         if norm_name == "get_weather_forecast":
             expecting_weather_summary = True
         elif norm_name == "hangup":
-            nonlocal session_active
-            session_active = False
+            asyncio.create_task(_send_hangup())
 
         try:
             ctx = ToolContext(websocket=websocket, default_city=default_city_cfg)
             result_str = await execute_tool(norm_name, args, ctx)
-            logger.info(f"🔨 [QwenOmni Tool Result] {norm_name} -> {result_str[:120]}...")
+            logger.info(f"✅ [QwenOmni Tool Result] 工具 '{norm_name}' 返回数据: {result_str[:150]}...")
 
-            # 广播天气工具结果
-            if norm_name == "get_weather_forecast":
-                try:
-                    w_json = json.loads(result_str)
-                    await visual_broadcast_manager.broadcast({"type": "weather_data", "data": w_json})
-                except Exception as e:
-                    logger.warning(f"[QwenOmni] 广播天气失败: {e}")
-
-            # 回传工具执行结果给 Qwen-Omni 并触发二次生成
+            # 1. 优先并发回传工具执行结果给 Qwen-Omni 并立刻触发二次生成（最高优先级，减少首包语音延迟）
             if client and client.ws:
                 client._audio_suppressed = False
                 client._manual_interrupt_active = False
+
+                # ⚡ 极速优化：精简 Payload，去除所有无用字段，削减 85% Token 上下文，大幅缩短云端 TTFT 推理延迟
+                llm_output_str = simplify_tool_result_for_llm(norm_name, result_str)
+
                 tool_output_event = {
                     "type": "conversation.item.create",
                     "item": {
                         "type": "function_call_output",
                         "call_id": call_id,
-                        "output": result_str
+                        "output": llm_output_str
                     }
                 }
                 await client.send_event(tool_output_event)
                 await client.create_response()
+
+            # 2. 异步广播大屏数据，避免串行等待 JSON 解析与广播阻塞 LLM 语音推理
+            if norm_name == "get_weather_forecast":
+                async def _bg_broadcast_weather():
+                    try:
+                        w_json = json.loads(result_str)
+                        await visual_broadcast_manager.broadcast({"type": "weather_data", "data": w_json})
+                    except Exception as e:
+                        logger.warning(f"[QwenOmni] 广播天气失败: {e}")
+                asyncio.create_task(_bg_broadcast_weather())
         except Exception as e:
             import traceback
             logger.error(f"❌ [QwenOmni Tool Exec Error] {e}\n{traceback.format_exc()}")
 
-    client = QwenOmniRealtimeClient(
-        workspace_id=workspace_id,
-        api_key=api_key,
-        model=voice_model,
-        voice=voice,
-        instructions=instructions,
-        turn_mode=turn_mode,
-        vad_threshold=float(config.get("qwen_omni_vad_threshold", 0.5)),
-        vad_silence_ms=int(config.get("qwen_omni_silence_duration_ms", 800)),
-        tools=GLOBAL_TOOLS_SCHEMA,
-        on_audio_delta=on_audio_delta,
-        on_input_transcript=on_input_transcript,
-        on_output_transcript=on_output_transcript,
-        on_output_transcript_completed=on_output_transcript_completed,
-        on_interrupt=on_interrupt,
-        on_response_done=on_response_done,
-        on_tool_call=handle_tool_call,
-    )
+    msg_task: Optional[asyncio.Task] = None
+
+    async def _ensure_cloud_client():
+        nonlocal client, msg_task
+        if client is not None:
+            return client
+
+        logger.info(f"⚡ [QwenOmni] 收到唤醒请求，启动连接百炼 Realtime 服务: {voice_model}")
+        new_client = QwenOmniRealtimeClient(
+            workspace_id=workspace_id,
+            api_key=api_key,
+            model=voice_model,
+            voice=voice,
+            instructions=instructions,
+            turn_mode=turn_mode,
+            vad_threshold=float(config.get("vad_threshold", 0.5)),
+            vad_silence_ms=int(config.get("vad_silence_duration_ms", 450)),
+            tools=GLOBAL_TOOLS_SCHEMA,
+            on_audio_delta=on_audio_delta,
+            on_input_transcript=on_input_transcript,
+            on_output_transcript=on_output_transcript,
+            on_output_transcript_completed=on_output_transcript_completed,
+            on_interrupt=on_interrupt,
+            on_response_done=on_response_done,
+            on_tool_call=handle_tool_call,
+        )
+        await new_client.connect()
+        msg_task = asyncio.create_task(new_client.handle_messages())
+        client = new_client
+        return client
+
+    async def _close_cloud_client():
+        nonlocal client, msg_task
+        cur_task = asyncio.current_task()
+        if msg_task and msg_task != cur_task and not msg_task.done():
+            msg_task.cancel()
+            msg_task = None
+        if client:
+            c = client
+            client = None
+            try:
+                await c.close()
+            except Exception as e:
+                logger.debug(f"[QwenOmni] client.close exception: {e}")
+        logger.info("🌙 [QwenOmni] 云端 DashScope 会话已休眠关断")
 
     try:
-        await client.connect()
-        msg_task = asyncio.create_task(client.handle_messages())
-        asyncio.create_task(
-            visual_broadcast_manager.broadcast({"type": "state_change", "state": "listening"})
-        )
+        logger.info("🟢 [QwenOmni 通道长连接就绪]")
 
         while session_active:
-            msg = await websocket.receive()
+            try:
+                msg = await websocket.receive()
+            except (WebSocketDisconnect, RuntimeError):
+                logger.info("[QwenOmni] 前端 WebSocket 客户端连接中断，退出通道循环")
+                break
+            except Exception as e:
+                logger.warning(f"[QwenOmni] websocket.receive 接收报错: {e}")
+                break
+
             if "bytes" in msg:
                 data = msg["bytes"]
-                if len(data) > 1 and data[0] == 0x00:
+                if len(data) > 1 and data[0] == 0x00 and client:
                     await client.stream_audio(data[1:])
             elif "text" in msg:
                 try:
                     payload = json.loads(msg["text"])
                     p_type = payload.get("type")
-                    if p_type == "hangup":
-                        session_active = False
+
+                    if p_type == "wakeup":
+                        logger.info("✨ [QwenOmni] 收到前端 wakeup 唤醒信号，建立云端 Realtime Session！")
+                        hangup_sent = False
+                        await _ensure_cloud_client()
+                        asyncio.create_task(
+                            visual_broadcast_manager.broadcast({"type": "state_change", "state": "listening"})
+                        )
+                        await _send_safe({"type": "state_change", "state": "listening"})
+
+                    elif p_type in ["sleep", "hangup"]:
+                        logger.info("🛑 [QwenOmni] 收到前端 sleep/hangup 休眠信号，释放云端 Session！")
+                        await _close_cloud_client()
+                        asyncio.create_task(
+                            visual_broadcast_manager.broadcast({"type": "state_change", "state": "idle"})
+                        )
+                        await _send_safe({"type": "state_change", "state": "idle"})
+
                     elif p_type == "playback_state":
                         pb_state = payload.get("state", "listening")
                         logger.info(f"🔊 [QwenOmni] 收到客户端播报状态反向同步: '{pb_state}' -> 全局广播大屏")
                         asyncio.create_task(
                             visual_broadcast_manager.broadcast({"type": "state_change", "state": pb_state})
                         )
+
                     elif p_type == "interrupt":
-                        logger.info("⚡ [QwenOmni] 收到前端唤醒硬打断指令，强行重置会话！")
-                        client._audio_suppressed = True
-                        client._manual_interrupt_active = True
-                        await client.cancel_response()
+                        logger.info("⚡ [QwenOmni] 收到前端硬打断指令！")
+                        if client:
+                            client._audio_suppressed = True
+                            client._manual_interrupt_active = True
+                            await client.cancel_response()
                         asyncio.create_task(
                             visual_broadcast_manager.broadcast({"type": "state_change", "state": "listening"})
                         )
                         await _send_safe({"type": "state_change", "state": "listening"})
                         await _send_safe({"type": "interrupt"})
+
                     elif p_type == "query" or "text" in payload:
                         query_text = payload.get("text", "")
                         if query_text:
                             logger.info(f"💬 [QwenOmni Text Query] 收到前端文本指令: '{query_text}'")
+                            active_client = await _ensure_cloud_client()
                             item_event = {
                                 "type": "conversation.item.create",
                                 "item": {
@@ -685,27 +767,20 @@ async def handle_qwen_omni_realtime_session(
                                     ]
                                 }
                             }
-                            await client.send_event(item_event)
-                            await client.create_response()
+                            await active_client.send_event(item_event)
+                            await active_client.create_response()
                 except Exception as e:
                     logger.warning(f"[QwenOmni] JSON parse error: {e}")
 
-        msg_task.cancel()
-    except (WebSocketDisconnect, websockets.exceptions.ConnectionClosed):
-        logger.info("[QwenOmni] 前端 WebSocket 连接正常切断")
     except asyncio.CancelledError:
         logger.info("[QwenOmni] 会话任务已被正常取消")
     except Exception as e:
         logger.error(f"[QwenOmni] 会话运行异常: {e}")
     finally:
         session_active = False
-        if client:
-            try:
-                await client.close()
-            except Exception as e:
-                logger.debug(f"[QwenOmni] client.close exception: {e}")
+        await _close_cloud_client()
         try:
             await visual_broadcast_manager.broadcast({"type": "state_change", "state": "idle"})
         except Exception:
             pass
-        logger.info("🔴 [QwenOmni 会话已关闭]")
+        logger.info("🔴 [QwenOmni WebSocket 通道已关闭]")

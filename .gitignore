@@ -8,3 +8,7 @@ scratch
 dist
 sherpa
 .venv
+backups
+.jbeval
+.codebuddy
+uv.lock

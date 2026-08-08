@@ -1,23 +1,6 @@
 # -*- coding: utf-8 -*-
 """
 qwen-audio-3.0-realtime-plus / qwen-audio-3.0-realtime-flash 独立 WebSocket Handler
-
-严格按照阿里云百炼 Qwen-Audio 实时语音 API 文档实现，与 OmniRealtimeClient 完全独立。
-
-关键规格（与 Omni 系列的核心差异）：
-  - WebSocket URL: wss://{WorkspaceId}.cn-beijing.maas.aliyuncs.com/api-ws/v1/realtime
-  - 额外 Header:  x-dashscope-dataInspection: disable
-  - 音频格式字段: "pcm"（非 "pcm16"）
-  - 输出采样率:   24kHz（前端 playCtx 已自动适配）
-  - voice 参数:   仅首次 session.update 生效，后续忽略
-  - 轮次检测:     server_vad / smart_turn / push-to-talk (null)
-  - 打断处理:     引入 _audio_suppressed，抑制打断后的残余音频帧
-  - 历史管理:     max_history_turns（1~50，默认 20）
-  - 工具调用:     response.function_call_arguments.done（与 Omni 协议兼容）
-
-所需环境变量：
-  DASHSCOPE_API_KEY        — DashScope API 密钥（已有）
-  DASHSCOPE_WORKSPACE_ID   — 百炼业务空间 ID（新增，在 .env 中配置）
 """
 
 import os, re, asyncio, json, base64, time, logging, traceback
@@ -32,16 +15,11 @@ from starlette.websockets import WebSocketState
 logger = logging.getLogger("xiaoan.qwen_audio_realtime")
 
 
-# ─────────────────────────────────────────────
-# 枚举：轮次检测模式
-# ─────────────────────────────────────────────
-
 class QwenAudioTurnMode(Enum):
     SERVER_VAD   = "server_vad"    # 声学 VAD 自动检测
     SMART_TURN   = "smart_turn"    # 智能语义轮次（声学+语义融合）
     PUSH_TO_TALK = "push_to_talk"  # 手动控制（turn_detection=null）
 
-# 全局静态声纹预加载缓存 (role_name -> list of urls)
 STATIC_VOICEPRINT_CACHE: dict[str, list[str]] = {}
 
 
@@ -86,16 +64,7 @@ def _upload_voiceprint_file(public_base_url: str, save_path: str):
         pass
 
 
-# ─────────────────────────────────────────────
-# QwenAudioRealtimeClient — 核心 WebSocket 客户端
-# ─────────────────────────────────────────────
-
 class QwenAudioRealtimeClient:
-    """
-    qwen-audio-3.0-realtime-plus / flash 专属客户端。
-    完全独立于 OmniRealtimeClient，不共享任何代码。
-    """
-
     def __init__(
         self,
         workspace_id: str,
@@ -150,8 +119,8 @@ class QwenAudioRealtimeClient:
         self._is_responding: bool = False
         self._response_done_event = asyncio.Event()
         self._response_done_event.set()
-        self._audio_suppressed: bool = False   # 打断后抑制残余音频
-        self._manual_interrupt_active: bool = False  # 硬打断强行锁定标识
+        self._audio_suppressed: bool = False
+        self._manual_interrupt_active: bool = False
         self._dynamic_record_enabled = False
         self._dynamic_record_buffer = bytearray()
         self._current_output_text: str = ""
@@ -159,10 +128,6 @@ class QwenAudioRealtimeClient:
         self._current_input_text: str = ""
 
     async def connect(self) -> None:
-        """
-        建立 WebSocket 连接并发送首次 session.update（含 voice/轮次/工具等所有配置）。
-        重要：voice 仅首次 session.update 生效，后续传入被服务端忽略。
-        """
         if not self.workspace_id:
             raise ValueError("[QwenAudio] DASHSCOPE_WORKSPACE_ID 不能为空，必须配置百炼业务空间 ID。")
 
@@ -175,7 +140,7 @@ class QwenAudioRealtimeClient:
             "Authorization": f"Bearer {self.api_key}",
             "x-dashscope-dataInspection": "disable",
         }
-        logger.info(f"[QwenAudio] Connecting to {url} (model={self.model} voice={self.voice} turn={self.turn_mode.value})")
+        logger.info(f"[RealtimeVoiceEngine] 连接实时语音引擎 (音色={self.voice})")
         self.ws = await websockets.connect(
             url, extra_headers=headers,
             open_timeout=30, ping_interval=20, ping_timeout=20, close_timeout=1,
@@ -184,8 +149,8 @@ class QwenAudioRealtimeClient:
             "modalities": ["text", "audio"],
             "voice": self.voice,
             "instructions": self.instructions,
-            "input_audio_format": "pcm",    # 16kHz 16bit 单声道
-            "output_audio_format": "pcm",   # 24kHz 16bit 单声道（前端已适配）
+            "input_audio_format": "pcm",
+            "output_audio_format": "pcm",
             "max_history_turns": self.max_history_turns,
         }
         if self.tools:
@@ -205,7 +170,7 @@ class QwenAudioRealtimeClient:
             session_config["turn_detection"] = turn_detection_config
 
         else:
-            session_config["turn_detection"] = None  # push-to-talk
+            session_config["turn_detection"] = None
         await self.ws.send(json.dumps({"type": "session.update", "session": session_config}))
 
     async def send_event(self, event: Dict[str, Any]) -> None:
@@ -215,7 +180,6 @@ class QwenAudioRealtimeClient:
         await self.ws.send(json.dumps(event))
 
     async def stream_audio(self, pcm_chunk: bytes) -> None:
-        """发送 16kHz 16bit 单声道 PCM 音频块。"""
         if self._dynamic_record_enabled:
             self._dynamic_record_buffer.extend(pcm_chunk)
         try:
@@ -226,19 +190,16 @@ class QwenAudioRealtimeClient:
         except (websockets.exceptions.ConnectionClosed, AttributeError):
             pass
 
-
     async def commit_audio_buffer(self) -> None:
         await self.send_event({"type": "input_audio_buffer.commit"})
 
     async def create_response(self) -> None:
-        """触发模型生成回复（push-to-talk 或工具结果回传后使用）。"""
         await self.send_event({
             "type": "response.create",
             "response": {"modalities": ["audio", "text"]},
         })
 
     async def wait_for_response_done(self) -> None:
-        """等待当前响应生成结束（response.done）。"""
         if self._is_responding:
             await self._response_done_event.wait()
 
@@ -246,12 +207,6 @@ class QwenAudioRealtimeClient:
         await self.send_event({"type": "response.cancel"})
 
     async def handle_interruption(self) -> None:
-        """
-        处理用户打断：
-        1. 设置 _audio_suppressed=True 抑制残余音频帧
-        2. 发送 response.cancel
-        _audio_suppressed 在下一个 response.created 时自动重置
-        """
         if not self._is_responding:
             return
         logger.info("[QwenAudio] Interruption: suppressing audio + cancelling response")
@@ -267,7 +222,6 @@ class QwenAudioRealtimeClient:
         self._current_output_text = ""
 
     def flush_current_input_as_final(self):
-        """兜底：取出当前 interim 作为 final（防止 completed 事件缺失时漏发）。"""
         if not self._current_input_text or not self._current_input_item_id:
             return None
         text, item_id = self._current_input_text, self._current_input_item_id
@@ -276,20 +230,6 @@ class QwenAudioRealtimeClient:
         return text, item_id
 
     async def handle_messages(self) -> None:
-        """
-        异步接收并分发所有服务端事件。
-
-        核心事件（Qwen-Audio 文档）：
-          input_audio_buffer.speech_started         - VAD 检测到语音（触发打断）
-          input_audio_buffer.speech_stopped         - VAD 检测到静音
-          response.created                          - 模型开始生成（重置 _audio_suppressed）
-          response.done                             - 本轮回复完成
-          response.audio.delta                      - 24kHz PCM 音频增量
-          response.audio_transcript.delta / done    - 输出文本流式/完整
-          response.function_call_arguments.done     - 工具调用参数完整（触发本地执行）
-          conversation.item.input_audio_transcription.completed - 用户语音识别结果
-          error                                     - 错误事件
-        """
         try:
             async for message in self.ws:
                 event = json.loads(message)
@@ -316,7 +256,6 @@ class QwenAudioRealtimeClient:
                     self._is_responding = False
                     self._response_done_event.set()
 
-                # ── 官方声纹注册结果与状态推送事件 ──
                 elif event_type == "voiceprint_audio_list.in_progress":
                     item_id = event.get("item_id", "")
                     logger.info(f"🎙️ [QwenAudio 声纹注册] 阿里云已接收配置，正在异步下载声纹音频并提取特征... (task_id: {item_id})")
@@ -330,7 +269,6 @@ class QwenAudioRealtimeClient:
                     reason = event.get("reason", "未知原因")
                     logger.error(f"❌ [QwenAudio 声纹注册] 阿里云服务端声纹注册失败！原因: {reason} (task_id: {item_id})")
 
-                # ── 官方环境音/非目标说话人人声透传事件 ──
                 elif event_type == "conversation.item.ambient_audio_transcription.completed":
                     text = event.get("text", "")
                     if text.strip():
@@ -341,7 +279,7 @@ class QwenAudioRealtimeClient:
                     self._is_responding = True
                     self._response_done_event.clear()
                     if not self._manual_interrupt_active:
-                        self._audio_suppressed = False  # 仅在非硬打断锁定时才允许解封
+                        self._audio_suppressed = False
                     self._current_output_text = ""
                     if self.on_response_created:
                         self.on_response_created(event)
@@ -355,7 +293,7 @@ class QwenAudioRealtimeClient:
 
                 elif event_type == "input_audio_buffer.speech_started":
                     self._current_input_text = ""
-                    self._manual_interrupt_active = False  # 用户主动再次开口说话，解除打断强行锁定
+                    self._manual_interrupt_active = False
                     logger.info("🎙️ [QwenAudio VAD] 检测到用户开始说话 (speech_started)")
                     if self.on_state_change:
                         self.on_state_change("listening")
@@ -441,9 +379,7 @@ class QwenAudioRealtimeClient:
                         audio_data = bytes(self._dynamic_record_buffer)
                         self._dynamic_record_buffer.clear()
                         if transcript and self.on_first_turn_completed:
-                            # 触发后台动态声纹重连逻辑
                             asyncio.create_task(self.on_first_turn_completed(transcript, audio_data))
-
 
                 elif event_type == "response.function_call_arguments.done":
                     logger.info(f"🛠️ [QwenAudio 收到工具调用指令] call_id={event.get('call_id')} name={event.get('name')} args={event.get('arguments')}")
@@ -463,9 +399,6 @@ class QwenAudioRealtimeClient:
             except Exception:
                 pass
 
-# ─────────────────────────────────────────────
-# handle_qwen_audio_realtime_session — 会话主入口
-# ─────────────────────────────────────────────
 
 async def handle_qwen_audio_realtime_session(
     websocket: WebSocket,
@@ -473,13 +406,11 @@ async def handle_qwen_audio_realtime_session(
     config: dict,
     visual_broadcast_manager,
 ) -> None:
-    """
-    接管 qwen-audio-3.0-realtime-plus / flash 端到端全双工语音会话主循环。
-    与 OmniRealtimeClient / Xunfei / Sherpa 完全独立，不共享任何代码路径。
-    """
     from utils import get_tool_calling_mode, normalize_tool_name, is_exit_intent, is_wake_word, send_session_hangup
-    from tools import GLOBAL_TOOLS_SCHEMA, get_instructions, ToolContext, execute_tool
+    from tools import GLOBAL_TOOLS_SCHEMA, get_prompt, ToolContext, execute_tool
 
+    default_city = config.get("default_city", "")
+    instructions = get_prompt(default_city)
     api_key = os.getenv("DASHSCOPE_API_KEY", "")
     workspace_id = os.getenv("DASHSCOPE_WORKSPACE_ID", "")
     voice_model = config.get("voice_model_name", "qwen-audio-3.0-realtime-plus")
@@ -503,21 +434,15 @@ async def handle_qwen_audio_realtime_session(
     from datetime import datetime
     today_str = datetime.now().strftime("%Y-%m-%d")
 
-    # 读取声纹锁定模式 (none | static | dynamic)
     vp_mode = config.get("qwen_audio_voiceprint_mode", "none")
     selected_vp_id = config.get("selected_voiceprint_id", "")
     stream_asr_enabled = bool(config.get("stream_asr_enabled", True))
     
     turn_mode_str = config.get("qwen_audio_turn_mode", "server_vad")
-    
-    # 初始化 voiceprint_audio_urls
     voiceprint_audio_urls = []
-    
-    # 声纹服务器专用 URL (直连公网声纹服务端 http://8.141.83.146:8777)
     vp_server_url = config.get("voiceprint_server_url") or os.getenv("VOICEPRINT_SERVER_URL", "http://8.141.83.146:8777").rstrip("/")
 
     if vp_mode == "static":
-        # 静态锁定：优先零延迟使用启动时已预加载完成的声纹缓存矩阵
         if selected_vp_id in STATIC_VOICEPRINT_CACHE and STATIC_VOICEPRINT_CACHE[selected_vp_id]:
             voiceprint_audio_urls = STATIC_VOICEPRINT_CACHE[selected_vp_id]
             logger.info(f"🎙️ [QwenAudio 声纹] 命中启动预加载缓存【静态绑定角色: 『{selected_vp_id}』】 -> 秒级装载 {len(voiceprint_audio_urls)}/5 份采样矩阵: {voiceprint_audio_urls}")
@@ -534,12 +459,10 @@ async def handle_qwen_audio_realtime_session(
                 turn_mode_str = "server_vad"
 
     elif vp_mode == "dynamic":
-        # 动态锁定：首句先不锁声纹，必须强制用 server_vad 进行首轮的语音捕获与声纹提取
         turn_mode_str = "server_vad"
         voiceprint_audio_urls = []
         logger.info("🎙️ [QwenAudio 声纹] 已激活【自动首句锁定】 -> 首个回合以 server_vad 捕获特征，回答结束后无感升级 smart_turn 声纹锁定...")
     else:
-        # none：仍支持旧的文本框输入
         urls_raw = config.get("qwen_audio_voiceprint_audio_urls", [])
         if isinstance(urls_raw, list):
             voiceprint_audio_urls = [str(u).strip() for u in urls_raw if str(u).strip()]
@@ -554,29 +477,17 @@ async def handle_qwen_audio_realtime_session(
             log_msg = "🎙️ [QwenAudio 声纹] 当前声纹模式: 【无锁定】 (未使用任何声纹参考音频，不限制发言人)"
             logger.info(log_msg)
 
-
-
-
     turn_mode = {
         "server_vad": QwenAudioTurnMode.SERVER_VAD,
         "smart_turn": QwenAudioTurnMode.SMART_TURN,
         "push_to_talk": QwenAudioTurnMode.PUSH_TO_TALK,
     }.get(turn_mode_str, QwenAudioTurnMode.SERVER_VAD)
 
-    vad_threshold = float(config.get("qwen_audio_vad_threshold", 0.5))
-    vad_silence_ms = int(config.get("e2e_silence_duration_ms", 800))
+    vad_threshold = float(config.get("vad_threshold", 0.5))
+    vad_silence_ms = int(config.get("vad_silence_duration_ms", 450))
     max_history_turns = int(config.get("qwen_audio_max_history_turns", 20))
     tool_mode = get_tool_calling_mode("voice", voice_model)
-    default_city_cfg = config.get("default_city", "北京")
-
-    realtime_prompt_prefix = (
-        "【绝对指令】：你自身没有任何实时的天气、灾情和资源数据。每当用户询问任何关于"
-        "天气、冷热、下雨、风力、预警、展示大屏图层、避难所、物资、历史灾情等问题时，"
-        "你必须且只能选择调用相应的工具函数（如 get_weather_forecast、show_screen_layer 等），"
-        "绝对禁止你直接猜测或脑补回答！"
-        "如果不涉及这些专业气象灾防问题，你再直接进行日常温柔交谈。\n\n"
-    )
-    instructions = realtime_prompt_prefix + get_instructions(default_city_cfg) + f"\n今天是 {today_str}。"
+    instructions = get_prompt(default_city)
 
     logger.info(f"🟢 [QwenAudio 会话开启] 模型={voice_model} | 音色={voice} | 轮次={turn_mode.value} | 工具={tool_mode}")
 
@@ -656,12 +567,11 @@ async def handle_qwen_audio_realtime_session(
             await _send_hangup()
             return
 
-        # 唤醒词文本打断拦截：当 ASR 结果单独为唤醒词时，立刻重置会话并保持倾听，避免模型回答“我在呢”，且不向前端展示唤醒词文字
         if is_wake_word(text):
             logger.info(f"⚡ [QwenAudio ASR 唤醒打断] 捕获到唤醒词 '{text}'，立刻打断并重置为倾听状态（不推送至前端展示）！")
             on_interrupt()
-            client._audio_suppressed = True  # 物理全屏蔽：拦截该次及随后的任何音频与文本！
-            client._manual_interrupt_active = True  # 强行锁定！防止后续异步返回的 response.created 擅自解封
+            client._audio_suppressed = True
+            client._manual_interrupt_active = True
             await client.cancel_response()
             return
 
@@ -748,22 +658,13 @@ async def handle_qwen_audio_realtime_session(
         asyncio.run_coroutine_threadsafe(
             visual_broadcast_manager.broadcast({"type": "state_change", "state": "idle"}), loop)
         asyncio.run_coroutine_threadsafe(_send_safe({"type": "state_change", "state": "listening"}), loop)
-        # 一轮 AI 回复播放结束进入空闲期，静默检查声纹就绪状态并平滑热升级
         if _dynamic_vp_ready and not _switched_to_smart_turn:
             asyncio.run_coroutine_threadsafe(_try_seamless_switch_to_smart_turn(), loop)
-
 
     pending_tool_calls_count = 0
     pending_tool_lock = asyncio.Lock()
 
     async def handle_tool_call(event: dict):
-        """
-        Function Calling 完整流程（严格按文档）：
-          1. 解析 call_id / name / arguments（完整 JSON 字符串）
-          2. 执行本地工具函数
-          3. conversation.item.create 回传 function_call_output
-          4. 仅在多工具全部处理完成后触发 1 次 response.create 避免重复播报
-        """
         nonlocal session_active, expecting_weather_summary, pending_tool_calls_count
 
         async def do_call():
@@ -781,7 +682,7 @@ async def handle_qwen_audio_realtime_session(
             try:
                 ctx = ToolContext(
                     websocket=websocket,
-                    default_city=default_city_cfg,
+                    default_city=default_city,
                     expecting_weather_summary=expecting_weather_summary,
                     session_active=session_active,
                 )
@@ -833,7 +734,6 @@ async def handle_qwen_audio_realtime_session(
         else:
             err_msg = str(error_payload)
 
-        # 如果是服务端 VAD 自动提交流与手动 response 冲突或取消响应相关的非致命秩序提醒，退避忽略，不要断开通话
         non_fatal_keywords = [
             "manual response is already in progress", 
             "Server VAD turn committed", 
@@ -847,10 +747,6 @@ async def handle_qwen_audio_realtime_session(
             return
 
         logger.error(f"[QwenAudio Client Error] 服务端错误: {error_payload}")
-        if any(k in err_msg for k in non_fatal_keywords):
-            logger.warning(f"[QwenAudio] 忽略服务端非致命状态提示: {err_msg}")
-            return
-
 
         asyncio.run_coroutine_threadsafe(
             websocket.send_json({
@@ -867,7 +763,6 @@ async def handle_qwen_audio_realtime_session(
 
     async def _async_upload_dynamic_vp(audio_data: bytes):
         nonlocal _dynamic_vp_ready, _ready_vp_urls
-        # 公网声纹服务地址：用于动态声纹上传与回读（Qwen 云端需公网可达 URL）
         public_base_url = os.getenv("VITE_PUBLIC_BASE_URL", "").rstrip("/")
         base_url = public_base_url or vp_server_url
         save_dir = "backend/voiceprints"
@@ -877,14 +772,12 @@ async def handle_qwen_audio_realtime_session(
             await asyncio.to_thread(_write_voiceprint_wav, save_path, audio_data)
             print(f"\033[96m[QwenAudio] 动态临时声纹本地保存成功: {save_path}\033[0m")
             
-            # 如果配置了公网 VITE_PUBLIC_BASE_URL，后台异步推送到公网服务器
             if public_base_url and "127.0.0.1" not in public_base_url and "localhost" not in public_base_url:
                 await asyncio.to_thread(_upload_voiceprint_file, public_base_url, save_path)
                 logger.info("[QwenAudio Sync] 动态声纹后台成功同步推送到公网服务器！已就绪。")
 
             _ready_vp_urls = [f"{base_url}/voiceprints/dynamic_temp.wav"]
             _dynamic_vp_ready = True
-            # 尝试在静音空闲期触发平滑升级
             asyncio.create_task(_try_seamless_switch_to_smart_turn())
         except Exception as sync_err:
             logger.warning(f"[QwenAudio Sync Warning] 后台异步推送动态声纹失败: {sync_err}")
@@ -934,7 +827,6 @@ async def handle_qwen_audio_realtime_session(
         except Exception as e:
             logger.error(f"[QwenAudio] 静默升级切换声纹 Client 失败: {e}")
 
-    # 动态锁定：首句转录完成后的通知
     async def on_first_turn_completed(transcript: str, audio_data: bytes):
         if vp_mode != "dynamic" or _dynamic_vp_ready:
             return
@@ -944,9 +836,7 @@ async def handle_qwen_audio_realtime_session(
             logger.warning("[QwenAudio Warning] 音频太短，跳过动态声纹录制。")
             return
 
-        # 启动后台非阻塞任务，完全不干扰实时对话
         asyncio.create_task(_async_upload_dynamic_vp(audio_data))
-
 
     try:
         client = QwenAudioRealtimeClient(
@@ -974,7 +864,6 @@ async def handle_qwen_audio_realtime_session(
             voiceprint_audio_urls=voiceprint_audio_urls,
             stream_asr_enabled=stream_asr_enabled,
         )
-        # 如果是 dynamic 模式，手动开启录音
         if vp_mode == "dynamic":
             client._dynamic_record_enabled = True
 
@@ -987,7 +876,7 @@ async def handle_qwen_audio_realtime_session(
             msg = await websocket.receive()
             if "bytes" in msg:
                 data = msg["bytes"]
-                if len(data) > 1 and data[0] == 0x00:   # 首字节 0x00 = audio stream
+                if len(data) > 1 and data[0] == 0x00:
                     await client.stream_audio(data[1:])
             elif "text" in msg:
                 try:
@@ -1036,7 +925,6 @@ async def handle_qwen_audio_realtime_session(
 
 
 async def _fetch_role_voiceprint_urls(role_name: str, base_url: str) -> List[str]:
-    """直接调用 HTTP API 探查指定声纹角色的最新 5 个采样 URL"""
     if not role_name:
         return []
     target_server = base_url.rstrip("/") if base_url else os.getenv("VOICEPRINT_SERVER_URL", "http://8.141.83.146:8777").rstrip("/")
@@ -1064,10 +952,6 @@ async def _fetch_role_voiceprint_urls(role_name: str, base_url: str) -> List[str
 
 
 async def preload_static_voiceprints(config: Optional[dict] = None) -> List[str]:
-    """
-    当 qwen_audio_voiceprint_mode == 'static' 时，
-    在服务启动或配置更新时立即异步拉取并预加载最新声纹 URL 矩阵，无需等待首次唤醒。
-    """
     global STATIC_VOICEPRINT_CACHE
     if config is None:
         try:
@@ -1095,8 +979,11 @@ async def preload_static_voiceprints(config: Optional[dict] = None) -> List[str]
     return []
 
 
-
-
-
-
-
+async def maybe_preload_voiceprints(config: dict) -> None:
+    """
+    门卫包装函数：仅在配置使用 qwen-audio 模型时才触发声纹预加载。
+    调用方无需自行判断 voice_model_name 条件，直接调用即可。
+    """
+    voice_model = config.get("voice_model_name", "")
+    if voice_model and "qwen-audio" in voice_model.lower():
+        await preload_static_voiceprints(config)

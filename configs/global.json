@@ -7,11 +7,13 @@
     "log_file_level": "DEBUG",
     "session_idle_timeout_sec": 60,
     "voiceprint_server_url": "http://8.141.83.146:8777",
-    "backend_url": "http://127.0.0.1:10850",
+    "backend_url": "http://192.168.2.18:10850",
     "voice_interaction_style": "e2e",
     "interruption_mode": "wake_word_only",
     "stream_asr_enabled": true,
     "qwen_audio_max_history_turns": 20,
     "qwen_audio_turn_mode": "smart_turn",
-    "qwen_audio_voiceprint_mode": "none"
+    "qwen_audio_voiceprint_mode": "none",
+    "vad_silence_duration_ms": 300,
+    "vad_threshold": 0.5
 }

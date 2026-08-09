@@ -32,8 +32,8 @@ dependencies = [
     "pyinstaller>=6.0.0",
 ]
 
-[tool.uv]
-dev-dependencies = []
+[dependency-groups]
+dev = [] 
 
 [[tool.uv.index]]
 url = "https://mirrors.aliyun.com/pypi/simple"

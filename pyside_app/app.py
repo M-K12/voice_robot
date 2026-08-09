@@ -10,11 +10,25 @@ START_TIME = time.time()
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, PROJECT_ROOT)
 
-# 标准规范做法：在导入依赖 C++ 扩展 (sherpa_onnx) 前预先导入 onnxruntime，触发其原生的动态共享库装载链
-try:
-    import onnxruntime
-except ImportError:
-    pass
+# 标准规范做法：在非 Windows (Linux/macOS) 平台上，ONNX Runtime 的 .so 需以 RTLD_GLOBAL 标志预载暴露符号，供依赖 C++ 扩展 (sherpa_onnx) 链接
+import ctypes
+
+def _init_onnxruntime_symbols():
+    try:
+        import onnxruntime
+        if sys.platform != "win32" and hasattr(onnxruntime, "__file__"):
+            capi_dir = os.path.join(os.path.dirname(onnxruntime.__file__), "capi")
+            if os.path.exists(capi_dir):
+                for fn in os.listdir(capi_dir):
+                    if fn.startswith("libonnxruntime.so"):
+                        try:
+                            ctypes.CDLL(os.path.join(capi_dir, fn), mode=getattr(ctypes, "RTLD_GLOBAL", 1))
+                        except Exception:
+                            pass
+    except ImportError:
+        pass
+
+_init_onnxruntime_symbols()
 
 import signal
 from PySide6.QtCore import Qt, QTimer

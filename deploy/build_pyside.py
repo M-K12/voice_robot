@@ -58,12 +58,12 @@ def extract_third_party_imports(src_dir):
                         if isinstance(node, ast.Import):
                             for alias in node.names:
                                 top_name = alias.name.split(".")[0]
-                                if top_name and top_name not in stdlib and top_name not in local_dirs and top_name not in ["backend", "pyside_app", "main", "app"]:
+                                if top_name and top_name not in stdlib and top_name not in local_dirs and top_name not in ["backend", "pyside_app", "app"]:
                                     imports.add(top_name)
                         elif isinstance(node, ast.ImportFrom):
                             if node.module:
                                 top_name = node.module.split(".")[0]
-                                if top_name and top_name not in stdlib and top_name not in local_dirs and top_name not in ["backend", "pyside_app", "main"]:
+                                if top_name and top_name not in stdlib and top_name not in local_dirs and top_name not in ["backend", "pyside_app", "app"]:
                                     imports.add(top_name)
                 except Exception:
                     pass

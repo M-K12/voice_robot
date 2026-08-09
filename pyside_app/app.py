@@ -10,15 +10,11 @@ START_TIME = time.time()
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, PROJECT_ROOT)
 
-# 优先将本项目的 .venv/site-packages/onnxruntime/capi 加入 Windows DLL 搜寻列表，屏蔽全局 PATH 中旧版本 DLL 的污染
-_venv_ort_capi = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".venv", "Lib", "site-packages", "onnxruntime", "capi"))
-if os.path.exists(_venv_ort_capi):
-    if hasattr(os, "add_dll_directory"):
-        try:
-            os.add_dll_directory(_venv_ort_capi)
-        except Exception:
-            pass
-    os.environ["PATH"] = _venv_ort_capi + os.path.pathsep + os.environ.get("PATH", "")
+# 标准规范做法：在导入依赖 C++ 扩展 (sherpa_onnx) 前预先导入 onnxruntime，触发其原生的动态共享库装载链
+try:
+    import onnxruntime
+except ImportError:
+    pass
 
 import signal
 from PySide6.QtCore import Qt, QTimer

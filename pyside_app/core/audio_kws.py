@@ -4,6 +4,10 @@ import time
 import numpy as np
 from PySide6.QtCore import QThread, Signal, Slot
 import sounddevice as sd
+try:
+    import onnxruntime
+except ImportError:
+    pass
 import sherpa_onnx
 from loguru import logger
 
